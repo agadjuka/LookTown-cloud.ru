@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 import pytz
 from typing import Optional, List, Dict, Any
-from ..ydb_client import get_ydb_client
+
 from .auth_service import AuthService
 from .debug_service import DebugService
 from .logger_service import logger
@@ -23,9 +23,6 @@ class YandexAgentService:
         """Инициализация сервиса с внедрением зависимостей"""
         self.auth_service = auth_service
         self.debug_service = debug_service
-        
-        # Инициализация YDB клиента
-        self.ydb_client = get_ydb_client()
         
         # Ленивая инициализация LangGraph
         self._langgraph_service = None
@@ -95,24 +92,53 @@ class YandexAgentService:
             return result
     
     async def send_to_agent_langgraph(self, chat_id: str, user_text: str) -> dict:
-        """Отправка сообщения через LangGraph (Responses API)"""
+        """Отправка сообщения через LangGraph с использованием PostgreSQL для истории"""
         from ..graph.conversation_state import ConversationState
+        from ..storage.conversation_repo import get_conversation_repo
         
-        # Получаем last_response_id для продолжения диалога
-        last_response_id = await asyncio.to_thread(
-            self.ydb_client.get_last_response_id,
-            chat_id
+        # Получаем telegram_user_id из chat_id (они равны для личных чатов)
+        try:
+            telegram_user_id = int(chat_id)
+        except ValueError:
+            logger.error(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id")
+            telegram_user_id = 0
+        
+        # Получаем репозиторий
+        conversation_repo = get_conversation_repo()
+        
+        # Получаем или создаём conversation_id для этого пользователя
+        conversation_id = await asyncio.to_thread(
+            conversation_repo.get_or_create_conversation,
+            telegram_user_id
         )
         
         # Добавляем московское время в начало сообщения
         moscow_time = self._get_moscow_time()
         input_with_time = f"[{moscow_time}] {user_text}"
         
+        # Сохраняем входящее сообщение пользователя
+        await asyncio.to_thread(
+            conversation_repo.append_message,
+            conversation_id,
+            "user",
+            input_with_time
+        )
+        
+        # Загружаем историю последних 30 сообщений (включая только что добавленное)
+        history_messages = await asyncio.to_thread(
+            conversation_repo.load_last_messages,
+            conversation_id,
+            limit=30
+        )
+        
+        logger.info(f"Загружено {len(history_messages)} сообщений из истории для conversation_id={conversation_id}")
+        
         # Создаём начальное состояние
         initial_state: ConversationState = {
             "message": input_with_time,
-            "previous_response_id": last_response_id,
             "chat_id": chat_id,
+            "conversation_id": conversation_id,
+            "history": history_messages,  # Передаём историю в граф
             "stage": None,
             "extracted_info": None,
             "answer": "",
@@ -125,18 +151,30 @@ class YandexAgentService:
             initial_state
         )
         
-        # Сохраняем response_id для следующего запроса
-        response_id = result_state.get("response_id")
-        if response_id:
-            await asyncio.to_thread(
-                self.ydb_client.save_response_id,
-                chat_id,
-                response_id
-            )
-        
         # Извлекаем ответ
         answer = result_state.get("answer", "")
         manager_alert = result_state.get("manager_alert")
+        
+        # Сохраняем ответ ассистента в Postgres
+        if answer:
+            await asyncio.to_thread(
+                conversation_repo.append_message,
+                conversation_id,
+                "assistant",
+                answer
+            )
+        
+        # Сохраняем информацию о tool-вызовах, если были
+        used_tools = result_state.get("used_tools", [])
+        if used_tools:
+            tools_info = f"Tools used: {', '.join(used_tools)}"
+            await asyncio.to_thread(
+                conversation_repo.append_message,
+                conversation_id,
+                "system",
+                tools_info,
+                {"tools": used_tools}
+            )
         
         # Нормализуем даты и время в ответе
         from .date_normalizer import normalize_dates_in_text
@@ -163,11 +201,22 @@ class YandexAgentService:
     async def reset_context(self, chat_id: str):
         """Сброс контекста для чата"""
         try:
-            # Сбрасываем last_response_id
-            await asyncio.to_thread(
-                self.ydb_client.reset_context,
-                chat_id
+            from ..storage.conversation_repo import get_conversation_repo
+            
+            # Получаем telegram_user_id из chat_id
+            try:
+                telegram_user_id = int(chat_id)
+            except ValueError:
+                logger.error(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id")
+                telegram_user_id = 0
+            
+            # Создаём новый диалог в Postgres (старый останется в базе)
+            conversation_repo = get_conversation_repo()
+            new_conversation_id = await asyncio.to_thread(
+                conversation_repo.create_new_conversation,
+                telegram_user_id
             )
+            logger.info(f"Создан новый диалог: conversation_id={new_conversation_id} для telegram_user_id={telegram_user_id}")
             
             # Очищаем историю результатов инструментов
             try:
@@ -178,6 +227,6 @@ class YandexAgentService:
             except Exception as e:
                 logger.debug(f"Ошибка при очистке истории результатов инструментов: {e}")
             
-            logger.ydb("Контекст сброшен", chat_id)
+            logger.success("Контекст сброшен", chat_id)
         except Exception as e:
             logger.error("Ошибка при сбросе контекста", str(e))

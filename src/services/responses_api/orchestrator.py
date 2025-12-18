@@ -42,7 +42,7 @@ class ResponsesOrchestrator:
     def run_turn(
         self,
         user_message: str,
-        previous_response_id: Optional[str] = None,
+        history: Optional[List[Dict[str, Any]]] = None,
         chat_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
@@ -50,47 +50,54 @@ class ResponsesOrchestrator:
         
         Args:
             user_message: Сообщение пользователя
-            previous_response_id: ID предыдущего ответа для продолжения диалога (None для нового диалога)
+            history: История сообщений из PostgreSQL (последние N сообщений)
             chat_id: ID чата в Telegram (для передачи в инструменты)
             
         Returns:
             Словарь с ключами:
                 - reply: Текст ответа для пользователя
-                - response_id: ID ответа для сохранения (для следующего запроса)
                 - tool_calls: Список вызовов инструментов (если были)
         """
         # Получаем схемы инструментов один раз (не меняются в процессе выполнения)
         tools_schemas = self.tools_registry.get_all_tools_schemas()
         
+        # Формируем messages для первого запроса к API
+        # Включаем всю историю из PostgreSQL
+        input_messages = []
+        if history:
+            for msg in history:
+                # Пропускаем system сообщения (например, "Tools used: ...")
+                if msg.get("role") == "system":
+                    continue
+                input_messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+        
+        # Если история пустая или последнее сообщение не совпадает с текущим,
+        # добавляем текущее сообщение
+        if not input_messages or input_messages[-1].get("content") != user_message:
+            input_messages.append({
+                "role": "user",
+                "content": user_message
+            })
+        
+        logger.debug(f"Отправка в API: {len(input_messages)} сообщений")
+        
         # Цикл для обработки множественных вызовов инструментов
-        # API может вызывать инструменты несколько раз подряд
-        max_iterations = 10  # Максимальное количество итераций для предотвращения бесконечного цикла
+        max_iterations = 10
         iteration = 0
         tool_calls_info = []
-        last_iteration_tool_calls = []  # Результаты инструментов из последней итерации
+        last_iteration_tool_calls = []
         reply_text = ""
-        current_response_id = previous_response_id
-        final_response_id = None
         
         while iteration < max_iterations:
             iteration += 1
-            logger.debug(f"Итерация {iteration}: Запрос к API (previous_response_id={current_response_id})")
+            logger.debug(f"Итерация {iteration}: Запрос к API")
             
-            # Формируем input для запроса
-            # На первой итерации передаём сообщение пользователя
-            # На последующих итерациях передаём результаты инструментов из предыдущей итерации
-            input_messages = None
-            if iteration == 1:
-                # Первый запрос: передаём сообщение пользователя
-                input_messages = [{
-                    "role": "user",
-                    "content": user_message
-                }]
-            else:
-                # Последующие запросы: передаём результаты инструментов из предыдущей итерации
-                # Responses API сам управляет историей через previous_response_id
-                # Но нужно передать результаты инструментов для продолжения диалога
-                input_messages = self._build_tool_results_input(last_iteration_tool_calls)
+            # На последующих итерациях добавляем результаты инструментов
+            if iteration > 1:
+                input_messages.extend(self._build_tool_results_input(last_iteration_tool_calls))
             
             # Очищаем результаты предыдущей итерации для новой
             last_iteration_tool_calls = []
@@ -101,25 +108,12 @@ class ResponsesOrchestrator:
                     instructions=self.instructions,
                     input_messages=input_messages,
                     tools=tools_schemas if tools_schemas else None,
-                    previous_response_id=current_response_id,
+                    previous_response_id=None,  # Не используем previous_response_id, передаём историю
                 )
-                # Сохраняем полный необработанный JSON ответа для логирования
                 last_raw_response = response
             except Exception as e:
                 logger.error(f"Ошибка при запросе к API на итерации {iteration}: {e}", exc_info=True)
-                # Если это критическая ошибка, прекращаем цикл
                 break
-            
-            # Сохраняем response.id для следующей итерации и финального результата
-            if hasattr(response, "id") and response.id:
-                current_response_id = response.id
-                final_response_id = response.id
-                logger.debug(f"Получен response.id: {current_response_id}")
-            else:
-                logger.warning(f"response.id не найден в ответе на итерации {iteration}")
-            
-            # Логируем ответ только на уровне DEBUG (избыточно для INFO)
-            logger.debug(f"ОТВЕТ ОТ RESPONSES API (итерация {iteration}): output_text={bool(getattr(response, 'output_text', None))}, output_len={len(getattr(response, 'output', []))}")
             
             # Проверяем, есть ли готовый текст ответа
             if hasattr(response, "output_text") and response.output_text:
@@ -131,7 +125,6 @@ class ResponsesOrchestrator:
             tool_calls = self._extract_tool_calls(response)
             
             if not tool_calls:
-                # Если нет tool_calls, но и нет output_text, прекращаем цикл
                 logger.warning(f"Нет tool_calls и нет output_text на итерации {iteration}")
                 break
             
@@ -149,16 +142,12 @@ class ResponsesOrchestrator:
                     logger.error(f"Ошибка парсинга аргументов для {func_name}: {args_json}")
                     args = {}
                 
-                # Логируем использование инструмента
                 logger.info(f"🔧 Использован инструмент: {func_name}")
                 logger.info(f"📋 Аргументы: {json.dumps(args, ensure_ascii=False, indent=2)}")
                 
-                # Вызываем инструмент
                 try:
-                    # Передаём None для conversation_history, так как Responses API сам управляет историей
                     result = self.tools_registry.call_tool(func_name, args, conversation_history=None, chat_id=chat_id)
                     
-                    # Сохраняем информацию о вызове инструмента
                     tool_call_info = {
                         "name": func_name,
                         "call_id": call_id,
@@ -169,25 +158,21 @@ class ResponsesOrchestrator:
                     last_iteration_tool_calls.append(tool_call_info)
                     
                 except Exception as e:
-                    # Проверяем, не является ли это CallManagerException
+                    # Проверяем CallManager
                     if CallManagerException and isinstance(e, CallManagerException):
-                        # CallManager был вызван - возвращаем специальный результат
                         escalation_result = e.escalation_result
                         logger.info(f"CallManager вызван через инструмент {func_name}")
                         
                         return {
                             "reply": escalation_result.get("user_message"),
-                            "response_id": final_response_id,
                             "tool_calls": tool_calls_info,
                             "call_manager": True,
                             "manager_alert": escalation_result.get("manager_alert"),
                         }
                     
-                    # Обрабатываем ошибку инструмента
                     logger.error(f"Ошибка при вызове инструмента {func_name}: {e}", exc_info=True)
                     error_result = f"Ошибка при выполнении инструмента: {str(e)}"
                     
-                    # Сохраняем информацию об ошибке
                     tool_call_info = {
                         "name": func_name,
                         "call_id": call_id,
@@ -203,28 +188,18 @@ class ResponsesOrchestrator:
         if not reply_text:
             logger.warning(f"Не получен текстовый ответ после {iteration} итераций")
         
-        logger.debug(f"Финальный результат: итераций={iteration}, длина ответа={len(reply_text) if reply_text else 0}, инструментов={len(tool_calls_info)}, response_id={final_response_id}")
+        logger.debug(f"Финальный результат: итераций={iteration}, длина ответа={len(reply_text) if reply_text else 0}, инструментов={len(tool_calls_info)}")
         
         return {
             "reply": reply_text,
-            "response_id": final_response_id,
             "tool_calls": tool_calls_info,
             "raw_response": last_raw_response if 'last_raw_response' in locals() else None,
         }
     
     def _extract_tool_calls(self, response: Any) -> List[Dict[str, Any]]:
-        """
-        Извлечение tool_calls из ответа Responses API
-        
-        Args:
-            response: Ответ от Responses API
-            
-        Returns:
-            Список tool_calls
-        """
+        """Извлечение tool_calls из ответа Responses API"""
         tool_calls = []
         
-        # Проверяем наличие output в ответе
         if not hasattr(response, "output"):
             return tool_calls
         
@@ -232,9 +207,7 @@ class ResponsesOrchestrator:
         if not output:
             return tool_calls
         
-        # Обрабатываем каждый элемент output
         for item in output:
-            # item может быть словарём, а не объектом
             if isinstance(item, dict):
                 item_type = item.get("type")
                 if item_type == "function_call":
@@ -256,19 +229,9 @@ class ResponsesOrchestrator:
         return tool_calls
     
     def _build_tool_results_input(self, tool_calls_info: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Формирование input с результатами инструментов для передачи в Responses API
-        
-        Args:
-            tool_calls_info: Список информации о вызовах инструментов из последней итерации
-            
-        Returns:
-            Список сообщений для input
-        """
+        """Формирование input с результатами инструментов"""
         input_messages = []
         
-        # Добавляем результаты инструментов из последней итерации
-        # Берем только результаты из последней итерации (последние N элементов, где N - количество tool_calls)
         for tool_call in tool_calls_info:
             call_id = tool_call.get("call_id", "")
             func_name = tool_call.get("name", "")

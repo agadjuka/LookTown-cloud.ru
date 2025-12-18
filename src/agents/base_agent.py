@@ -53,14 +53,14 @@ class BaseAgent:
         # Результат CallManager (если был вызван)
         self._call_manager_result = None
         
-    def __call__(self, message: str, previous_response_id: Optional[str] = None, chat_id: Optional[str] = None) -> tuple[str, Optional[str]]:
+    def __call__(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> str:
         """
         Выполнение запроса к агенту
         
         :param message: Сообщение для агента
-        :param previous_response_id: ID предыдущего ответа для продолжения диалога (None для нового диалога)
+        :param history: История сообщений из PostgreSQL (последние N сообщений)
         :param chat_id: ID чата в Telegram (для передачи в инструменты)
-        :return: Кортеж (ответ агента, response_id для сохранения)
+        :return: Ответ агента
         """
         try:
             # Очищаем предыдущие tool_calls
@@ -75,7 +75,7 @@ class BaseAgent:
             log_entry += f"{'='*80}\n"
             log_entry += f"Agent: {self.agent_name}\n"
             log_entry += f"Message:\n{message}\n"
-            log_entry += f"Previous Response ID: {previous_response_id or 'None (новый диалог)'}\n"
+            log_entry += f"History: {len(history) if history else 0} messages\n"
             llm_request_logger._write_raw(log_entry)
             
             # Логируем запрос к LLM
@@ -85,11 +85,11 @@ class BaseAgent:
                 assistant_id=None,
                 instruction=self.instruction,
                 tools=list(self.tools.values()),
-                messages=None  # Responses API сам управляет историей через previous_response_id
+                messages=history  # Передаём историю для логирования
             )
             
             # Выполняем запрос через orchestrator
-            result = self.orchestrator.run_turn(message, previous_response_id, chat_id=chat_id)
+            result = self.orchestrator.run_turn(message, history, chat_id=chat_id)
             
             # Сохраняем tool_calls
             if result.get("tool_calls"):
@@ -101,10 +101,9 @@ class BaseAgent:
                     "user_message": result.get("reply", ""),
                     "manager_alert": result.get("manager_alert"),
                 }
-                return "[CALL_MANAGER_RESULT]", result.get("response_id")
+                return "[CALL_MANAGER_RESULT]"
             
             reply = result.get("reply", "")
-            response_id = result.get("response_id")
             raw_response = result.get("raw_response")
                     
             # Логируем ответ от LLM
@@ -115,7 +114,7 @@ class BaseAgent:
                 raw_response=raw_response
             )
                 
-            return reply, response_id
+            return reply
         
         except Exception as e:
             import traceback

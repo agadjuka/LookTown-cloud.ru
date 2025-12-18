@@ -106,11 +106,11 @@ class MainGraph:
         logger.info("Определение стадии диалога")
         
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
         # Определяем стадию
-        stage_detection = self.stage_detector.detect_stage(message, previous_response_id, chat_id=chat_id)
+        stage_detection = self.stage_detector.detect_stage(message, history, chat_id=chat_id)
         
         # Проверяем, был ли вызван CallManager в StageDetectorAgent
         if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result:
@@ -122,7 +122,7 @@ class MainGraph:
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": "StageDetectorAgent",
                 "used_tools": ["CallManager"],
-                "response_id": None  # CallManager не возвращает response_id
+
             }
         
         return {
@@ -170,14 +170,8 @@ class MainGraph:
         """
         used_tools = [tool["name"] for tool in agent._last_tool_calls] if hasattr(agent, '_last_tool_calls') and agent._last_tool_calls else []
         
-        # Агент всегда возвращает кортеж (answer, response_id)
-        # Извлекаем ответ и response_id
-        if isinstance(answer, tuple) and len(answer) == 2:
-            answer_text, response_id = answer
-        else:
-            # Если по какой-то причине не кортеж, response_id остается None
-            answer_text = answer
-            response_id = None
+        # Агент теперь возвращает просто строку (ответ)
+        answer_text = answer
         
         # Проверяем, был ли вызван CallManager через инструмент
         if answer_text == "[CALL_MANAGER_RESULT]" and hasattr(agent, '_call_manager_result') and agent._call_manager_result:
@@ -191,7 +185,7 @@ class MainGraph:
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": agent_name,
                 "used_tools": used_tools,
-                "response_id": response_id
+
             }
         
         # Обычный ответ агента
@@ -201,76 +195,76 @@ class MainGraph:
             "answer": answer,
             "agent_name": agent_name,
             "used_tools": used_tools,
-            "response_id": response_id
+
         }
     
     def _handle_greeting(self, state: ConversationState) -> ConversationState:
         """Обработка приветствия"""
         logger.info("Обработка приветствия")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.greeting_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.greeting_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.greeting_agent, agent_result, state, "GreetingAgent")
     
     def _handle_information_gathering(self, state: ConversationState) -> ConversationState:
         """Обработка сбора информации"""
         logger.info("Обработка сбора информации")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.information_gathering_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.information_gathering_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.information_gathering_agent, agent_result, state, "InformationGatheringAgent")
     
     def _handle_booking(self, state: ConversationState) -> ConversationState:
         """Обработка бронирования"""
         logger.info("Обработка бронирования")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.booking_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.booking_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.booking_agent, agent_result, state, "BookingAgent")
     
     def _handle_booking_to_master(self, state: ConversationState) -> ConversationState:
         """Обработка бронирования к мастеру"""
         logger.info("Обработка бронирования к мастеру")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.booking_to_master_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.booking_to_master_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.booking_to_master_agent, agent_result, state, "BookingToMasterAgent")
     
     def _handle_cancellation_request(self, state: ConversationState) -> ConversationState:
         """Обработка отмены"""
         logger.info("Обработка отмены")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.cancel_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.cancel_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.cancel_agent, agent_result, state, "CancelBookingAgent")
     
     def _handle_reschedule(self, state: ConversationState) -> ConversationState:
         """Обработка переноса"""
         logger.info("Обработка переноса")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.reschedule_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.reschedule_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.reschedule_agent, agent_result, state, "RescheduleAgent")
     
     def _handle_view_my_booking(self, state: ConversationState) -> ConversationState:
         """Обработка просмотра записей"""
         logger.info("Обработка просмотра записей")
         message = state["message"]
-        previous_response_id = state.get("previous_response_id")
+        history = state.get("history")
         chat_id = state.get("chat_id")
         
-        agent_result = self.view_my_booking_agent(message, previous_response_id, chat_id=chat_id)
+        agent_result = self.view_my_booking_agent(message, history, chat_id=chat_id)
         return self._process_agent_result(self.view_my_booking_agent, agent_result, state, "ViewMyBookingAgent")
 
