@@ -17,5 +17,4 @@ class LangGraphService:
         """
         # Используем общую конфигурацию для избежания дублирования
         self.config = config or ResponsesAPIConfig()
-        self.folder_id = self.config.folder_id
         self.api_key = self.config.api_key

@@ -1,5 +1,5 @@
 """
-Модуль для работы с LangGraph (Responses API)
+Модуль для работы с LangGraph (OpenAI API)
 """
 import os
 import time
@@ -8,7 +8,6 @@ from datetime import datetime
 import pytz
 from typing import Optional, List, Dict, Any
 
-from .auth_service import AuthService
 from .debug_service import DebugService
 from .logger_service import logger
 from ..graph.main_graph import MainGraph
@@ -16,12 +15,11 @@ from .langgraph_service import LangGraphService
 import requests
 
 
-class YandexAgentService:
-    """Сервис для работы с LangGraph (Responses API)"""
+class AgentService:
+    """Сервис для работы с LangGraph (OpenAI API)"""
     
-    def __init__(self, auth_service: AuthService, debug_service: DebugService):
+    def __init__(self, debug_service: DebugService):
         """Инициализация сервиса с внедрением зависимостей"""
-        self.auth_service = auth_service
         self.debug_service = debug_service
         
         # Ленивая инициализация LangGraph

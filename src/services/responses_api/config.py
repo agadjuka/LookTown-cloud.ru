@@ -1,32 +1,31 @@
 """
-Конфигурация для Responses API
+Конфигурация для Responses API (OpenAI compatible)
 """
 import os
 from typing import Optional
 
 
 class ResponsesAPIConfig:
-    """Конфигурация для работы с Responses API"""
+    """Конфигурация для работы с OpenAI API (cloud.ru)"""
     
     def __init__(self):
-        self.folder_id = os.getenv("YANDEX_FOLDER_ID")
-        self.api_key = os.getenv("YANDEX_API_KEY_SECRET")
+        self.api_key = os.getenv("API_KEY")
+        self.base_url = "https://foundation-models.api.cloud.ru/v1"
+        self.model = "openai/gpt-oss-120b"
         
-        if not self.folder_id or not self.api_key:
-            raise ValueError("Не заданы YANDEX_FOLDER_ID или YANDEX_API_KEY_SECRET")
-        
-        self.base_url = "https://rest-assistant.api.cloud.yandex.net/v1"
-        self.model_uri = os.getenv(
-            "YANDEX_MODEL_URI",
-            f"gpt://{self.folder_id}/yandexgpt/latest"
-        )
+        if not self.api_key:
+            # Если API_KEY не задан, можно попробовать прочитать из старых переменных или оставить пустым
+            # но лучше предупредить
+            pass
         
         # Параметры модели по умолчанию
-        self.max_output_tokens = int(os.getenv("YANDEX_MAX_OUTPUT_TOKENS", "800"))
-        self.temperature = float(os.getenv("YANDEX_TEMPERATURE", "0.1"))
+        self.max_tokens = 2500
+        self.temperature = 0.5
+        self.top_p = 0.95
+        self.presence_penalty = 0
     
     @property
     def project(self) -> str:
-        """ID папки для использования в качестве project"""
-        return self.folder_id
+        """Для совместимости, если где-то используется"""
+        return "default"
 

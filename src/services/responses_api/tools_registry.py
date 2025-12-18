@@ -149,15 +149,16 @@ class ResponsesToolsRegistry:
             # Формируем схему в формате OpenAI function tool
             tool_schema = {
                 "type": "function",
-                "name": tool_class.__name__,
-                "description": description,
-                "parameters": {
-                    "type": "object",
-                    "properties": {},
-                    "required": [],
-                    "additionalProperties": False,
-                },
-                "strict": True,
+                "function": {
+                    "name": tool_class.__name__,
+                    "description": description,
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                        "required": [],
+                        "additionalProperties": False,
+                    },
+                }
             }
             
             # Заполняем properties из Pydantic схемы
@@ -191,14 +192,14 @@ class ResponsesToolsRegistry:
                 param_description = prop_info.get("description", "")
                 
                 # Добавляем параметр в properties
-                tool_schema["parameters"]["properties"][prop_name] = {
+                tool_schema["function"]["parameters"]["properties"][prop_name] = {
                     "type": json_type,
                     "description": param_description,
                 }
                 
                 # Добавляем в required если нужно
                 if prop_name in required:
-                    tool_schema["parameters"]["required"].append(prop_name)
+                    tool_schema["function"]["parameters"]["required"].append(prop_name)
             
             return tool_schema
             

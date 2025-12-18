@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes
 from telegram.constants import ParseMode
 from telegram.error import TimedOut
 
-from service_factory import get_yandex_agent_service
+from service_factory import get_agent_service
 from src.services.logger_service import logger
 from src.services.date_normalizer import normalize_dates_in_text
 from src.services.time_normalizer import normalize_times_in_text
@@ -53,8 +53,8 @@ async def send_to_agent(message_text, chat_id):
     async def _execute_agent_request():
         """Внутренняя функция для выполнения запроса к агенту"""
         logger.agent("Обработка сообщения", chat_id)
-        yandex_agent_service = get_yandex_agent_service()
-        response = await yandex_agent_service.send_to_agent(chat_id, message_text)
+        agent_service = get_agent_service()
+        response = await agent_service.send_to_agent(chat_id, message_text)
         logger.agent("Ответ получен", chat_id)
         return response
     
@@ -91,8 +91,8 @@ async def new_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     logger.telegram("Команда /new", chat_id)
     try:
-        yandex_agent_service = get_yandex_agent_service()
-        await yandex_agent_service.reset_context(chat_id)
+        agent_service = get_agent_service()
+        await agent_service.reset_context(chat_id)
         logger.success("Контекст сброшен", chat_id)
         await update.message.reply_text('Контекст сброшен. Начинаем новый диалог!')
     except Exception as e:

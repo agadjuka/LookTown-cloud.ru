@@ -459,6 +459,34 @@ class LLMRequestLogger:
         
         return message_data
     
+    def _to_dict_recursive(self, obj: Any) -> Any:
+        """Рекурсивно преобразует объекты в словари"""
+        if obj is None:
+            return None
+        if isinstance(obj, (str, int, float, bool)):
+            return obj
+        if isinstance(obj, (list, tuple)):
+            return [self._to_dict_recursive(item) for item in obj]
+        if isinstance(obj, dict):
+            return {k: self._to_dict_recursive(v) for k, v in obj.items()}
+        
+        # Если есть метод model_dump (Pydantic v2)
+        if hasattr(obj, 'model_dump'):
+            return self._to_dict_recursive(obj.model_dump())
+        # Если есть метод dict (Pydantic v1)
+        if hasattr(obj, 'dict'):
+            return self._to_dict_recursive(obj.dict())
+        # Если есть __dict__
+        if hasattr(obj, '__dict__'):
+            return {
+                k: self._to_dict_recursive(v) 
+                for k, v in obj.__dict__.items() 
+                if not k.startswith('_')
+            }
+        
+        # Fallback
+        return str(obj)
+
     def _extract_usage_info(self, raw_response: Any) -> Optional[Dict[str, Any]]:
         """
         Извлечь информацию об использовании токенов из ответа LLM
@@ -491,16 +519,7 @@ class LLMRequestLogger:
             try:
                 value = getattr(raw_response, attr, None)
                 if value is not None:
-                    # Если это объект с атрибутами, пытаемся извлечь данные
-                    if hasattr(value, '__dict__'):
-                        usage_info[attr] = {
-                            k: v for k, v in value.__dict__.items() 
-                            if not k.startswith('_')
-                        }
-                    elif isinstance(value, dict):
-                        usage_info[attr] = value
-                    else:
-                        usage_info[attr] = value
+                    usage_info[attr] = self._to_dict_recursive(value)
             except Exception:
                 pass
         
@@ -513,15 +532,7 @@ class LLMRequestLogger:
                     try:
                         value = getattr(raw_response, attr)
                         if value is not None and attr not in usage_info:
-                            if hasattr(value, '__dict__'):
-                                usage_info[attr] = {
-                                    k: v for k, v in value.__dict__.items() 
-                                    if not k.startswith('_')
-                                }
-                            elif isinstance(value, dict):
-                                usage_info[attr] = value
-                            else:
-                                usage_info[attr] = value
+                            usage_info[attr] = self._to_dict_recursive(value)
                     except Exception:
                         pass
         except Exception:

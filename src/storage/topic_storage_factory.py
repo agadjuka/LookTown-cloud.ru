@@ -1,43 +1,28 @@
 """Фабрика для создания экземпляра хранилища топиков."""
 
 import logging
+from typing import Optional
 
-from src.storage.ydb_topic_storage import YDBTopicStorage
 from src.storage.topic_storage import BaseTopicStorage
 
 logger = logging.getLogger(__name__)
 
 # Глобальный экземпляр хранилища
-_topic_storage: BaseTopicStorage | None = None
+_topic_storage: Optional[BaseTopicStorage] = None
 
 
-def get_topic_storage() -> BaseTopicStorage:
+def get_topic_storage() -> Optional[BaseTopicStorage]:
     """
     Получает или создает экземпляр хранилища топиков.
     
     Returns:
-        Экземпляр хранилища топиков (по умолчанию YDBTopicStorage)
+        Экземпляр хранилища топиков или None, если хранилище не настроено
     """
     global _topic_storage
     
     if _topic_storage is None:
-        try:
-            _topic_storage = YDBTopicStorage()
-            logger.info("Инициализирован YDBTopicStorage")
-        except ValueError as e:
-            logger.error(
-                "Не удалось инициализировать YDBTopicStorage: %s. "
-                "Убедитесь, что YDB настроен правильно.",
-                str(e),
-            )
-            raise
-        except Exception as e:
-            logger.error(
-                "Ошибка при инициализации хранилища топиков: %s",
-                str(e),
-            )
-            raise
+        logger.warning("Хранилище топиков (TopicStorage) не настроено. Админ-панель может не работать.")
+        # Здесь можно будет добавить инициализацию PostgresTopicStorage в будущем
+        pass
     
     return _topic_storage
-
-
