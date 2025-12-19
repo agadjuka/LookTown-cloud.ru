@@ -9,7 +9,7 @@ from .base_agent import BaseAgent
 from .dialogue_stages import DialogueStage
 from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
-from .tools.call_manager_tools import CallManager
+from .tools.call_manager import CallManager
 
 
 class StageDetection(BaseModel):
@@ -28,10 +28,7 @@ class StageDetectorAgent(BaseAgent):
 
 **СПИСОК СТАДИЙ:**
 
-- greeting: Клиент только начинает диалог, здоровается или пишет впервые за долгое время.
-- information_gathering: Клиент задает общие вопросы об услугах, ценах, мастерах. Но не выражает желания записаться либо узнать когда есть доступное время.
-- booking: клиент хочет записаться на услугу (запишите, хочу на.., можно записаться? и т.д.), либо узнать когда есть доступное время для записи (когда есть время, когда можно прийти и т.д.)
-- booking_to_master: клиент явно попросил записать его к конкретному мастеру и написал его имя. (если в предыдущих сообщениях ты выбирал эту стадию, то выбирай ее на всем процессе записи) (Если клиент не писал имя мастера, то выбирай стадию booking)
+- booking: клиент хочет записаться на услугу (запишите, хочу на.., можно записаться? и т.д.), либо узнать когда есть доступное время для записи (когда есть время, когда можно прийти и т.д.), либо задает общие вопросы об услугах, ценах, мастерах. Если клиент явно попросил записать его к конкретному мастеру и написал его имя, тоже используй стадию booking.
 - cancellation_request: Клиент просит отменить существующую запись.
 - reschedule: Клиент просит перенести существующую запись на другую дату или время. Говорит что опаздывает и т.д.
 - view_my_booking: Клиент хочет посмотреть свои предстоящие записи ("на когда я записан?", "какие у меня записи?").
@@ -58,7 +55,7 @@ class StageDetectorAgent(BaseAgent):
         # Если CallManager был вызван, BaseAgent вернет "[CALL_MANAGER_RESULT]"
         if response == "[CALL_MANAGER_RESULT]":
             logger.info("CallManager был вызван в StageDetectorAgent")
-            return StageDetection(stage=DialogueStage.GREETING.value)
+            return StageDetection(stage=DialogueStage.BOOKING.value)
         
         # Парсим ответ
         detection = self._parse_response(response)
@@ -67,9 +64,9 @@ class StageDetectorAgent(BaseAgent):
         
         # Валидируем стадию
         if detection.stage not in [stage.value for stage in DialogueStage]:
-            logger.warning(f"Неизвестная стадия: {detection.stage}, устанавливаю greeting")
+            logger.warning(f"Неизвестная стадия: {detection.stage}, устанавливаю booking")
             logger.warning(f"Доступные стадии: {[stage.value for stage in DialogueStage]}")
-            detection.stage = DialogueStage.GREETING.value
+            detection.stage = DialogueStage.BOOKING.value
         
         return detection
     
@@ -77,7 +74,7 @@ class StageDetectorAgent(BaseAgent):
         """Парсинг ответа агента в StageDetection"""
         if not response:
             logger.warning("Пустой ответ от агента определения стадии")
-            return StageDetection(stage=DialogueStage.GREETING.value)
+            return StageDetection(stage=DialogueStage.BOOKING.value)
         
         # Убираем лишние пробелы и переносы строк, приводим к нижнему регистру
         response_clean = response.strip().lower()
@@ -128,4 +125,4 @@ class StageDetectorAgent(BaseAgent):
         # Fallback
         logger.warning(f"Не удалось определить стадию из ответа: {response_clean}")
         logger.warning(f"Доступные стадии: {valid_stages}")
-        return StageDetection(stage=DialogueStage.GREETING.value)
+        return StageDetection(stage=DialogueStage.BOOKING.value)

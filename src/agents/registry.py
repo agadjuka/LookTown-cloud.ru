@@ -27,10 +27,7 @@ class AgentRegistry:
         
         # Маппинг ключей агентов на читаемые имена
         agent_names = {
-            'greeting_agent': 'Приветствие',
-            'information_gathering_agent': 'Сбор информации',
             'booking_agent': 'Бронирование',
-            'booking_to_master_agent': 'Бронирование к мастеру',
             'cancel_booking_agent': 'Отмена записи',
             'reschedule_agent': 'Перенесение записи',
             'view_my_booking_agent': 'Просмотр моей записи',
@@ -42,8 +39,8 @@ class AgentRegistry:
                 continue
             
             # Получаем ключ агента из имени файла (без расширения)
-            file_name = agent_file.stem  # например, 'greeting_agent'
-            key = file_name.replace('_agent', '')  # например, 'greeting'
+            file_name = agent_file.stem  # например, 'booking_agent'
+            key = file_name.replace('_agent', '')  # например, 'booking'
             
             # Получаем читаемое имя
             name = agent_names.get(file_name, file_name.replace('_', ' ').title())
@@ -58,7 +55,7 @@ class AgentRegistry:
         Получить информацию об агенте по ключу.
         
         Args:
-            key: Ключ агента (например, "greeting")
+            key: Ключ агента (например, "booking")
             
         Returns:
             Словарь с информацией об агенте или None

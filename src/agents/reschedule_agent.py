@@ -2,10 +2,10 @@
 Агент для переноса бронирований
 """
 
-from .tools.client_records_tools import GetClientRecords
-from .tools.reschedule_booking_tools import RescheduleBooking
-from .tools.service_tools import FindSlots
-from .tools.call_manager_tools import CallManager
+from .tools.get_client_records import GetClientRecords
+from .tools.reschedule_booking import RescheduleBooking
+from .tools.find_slots import FindSlots
+from .tools.call_manager import CallManager
 
 from .base_agent import BaseAgent
 from ..services.langgraph_service import LangGraphService

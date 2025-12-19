@@ -1,20 +1,18 @@
 """
 Инструменты для работы с каталогом услуг и бронированием
 """
-from .service_tools import (
-    GetCategories,
-    GetServices,
-    FindSlots,
-    CreateBooking,
-    ViewService,
-    FindMasterByService
-)
-from .client_records_tools import GetClientRecords
-from .cancel_booking_tools import CancelBooking
-from .reschedule_booking_tools import RescheduleBooking
-from .call_manager_tools import CallManager
-from .about_salon_tools import AboutSalon
-from .masters_tools import Masters
+from .get_categories import GetCategories
+from .get_services import GetServices
+from .find_slots import FindSlots
+from .create_booking import CreateBooking
+from .view_service import ViewService
+from .find_master_by_service import FindMasterByService
+from .get_client_records import GetClientRecords
+from .cancel_booking import CancelBooking
+from .reschedule_booking import RescheduleBooking
+from .call_manager import CallManager
+from .about_salon import AboutSalon
+from .masters import Masters
 
 __all__ = [
     # Инструменты каталога услуг
@@ -36,5 +34,3 @@ __all__ = [
     # Инструмент информации о мастерах
     "Masters",
 ]
-
-

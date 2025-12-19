@@ -19,11 +19,21 @@ def get_all_tools() -> List[Type[BaseModel]]:
         project_root = Path(__file__).parent.parent
         tools_dir = project_root / "src" / "agents" / "tools"
         
-        setup_packages(project_root, [
+        # Список всех подпапок инструментов
+        tool_packages = [
             ("src", project_root / "src"),
             ("src.agents", project_root / "src" / "agents"),
             ("src.agents.tools", tools_dir),
-        ])
+            ("src.agents.tools.common", tools_dir / "common"),
+        ]
+        
+        # Добавляем все подпапки инструментов
+        for tool_folder in tools_dir.iterdir():
+            if tool_folder.is_dir() and not tool_folder.name.startswith("__") and tool_folder.name != "common":
+                tool_package_name = f"src.agents.tools.{tool_folder.name}"
+                tool_packages.append((tool_package_name, tool_folder))
+        
+        setup_packages(project_root, tool_packages)
         
         registry_file = tools_dir / "registry.py"
         registry_module = load_registry(registry_file, "src.agents.tools.registry", "src.agents.tools")

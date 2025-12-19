@@ -81,7 +81,7 @@ class ResponsesToolsRegistry:
                 return result
             except Exception as e:
                 # Пробрасываем CallManagerException дальше
-                from ...agents.tools.call_manager_tools import CallManagerException
+                from ...agents.tools.call_manager import CallManagerException
                 if isinstance(e, CallManagerException):
                     raise
                 

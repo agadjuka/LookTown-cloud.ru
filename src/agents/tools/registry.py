@@ -20,21 +20,20 @@ class ToolsRegistry:
     def _load_tools(self) -> None:
         """Загружает все инструменты из модулей."""
         try:
-            # Импортируем все инструменты из __init__.py
-            from .service_tools import (
-                GetCategories,
-                GetServices,
-                FindSlots,
-                CreateBooking,
-                ViewService,
-                FindMasterByService
-            )
-            from .client_records_tools import GetClientRecords
-            from .cancel_booking_tools import CancelBooking
-            from .reschedule_booking_tools import RescheduleBooking
-            from .call_manager_tools import CallManager
-            from .about_salon_tools import AboutSalon
-            from .masters_tools import Masters
+            # Импортируем все инструменты напрямую из tool.py, минуя __init__.py
+            # чтобы избежать циклических импортов через src.agents.__init__.py
+            from .get_categories.tool import GetCategories
+            from .get_services.tool import GetServices
+            from .find_slots.tool import FindSlots
+            from .create_booking.tool import CreateBooking
+            from .view_service.tool import ViewService
+            from .find_master_by_service.tool import FindMasterByService
+            from .get_client_records.tool import GetClientRecords
+            from .cancel_booking.tool import CancelBooking
+            from .reschedule_booking.tool import RescheduleBooking
+            from .call_manager.tool import CallManager
+            from .about_salon.tool import AboutSalon
+            from .masters.tool import Masters
             
             # Регистрируем все инструменты
             tools_list = [

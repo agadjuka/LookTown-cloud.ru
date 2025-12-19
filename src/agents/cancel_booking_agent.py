@@ -1,9 +1,9 @@
 """
 Агент для отмены бронирований
 """
-from .tools.cancel_booking_tools import CancelBooking
-from .tools.client_records_tools import GetClientRecords
-from .tools.call_manager_tools import CallManager
+from .tools.cancel_booking import CancelBooking
+from .tools.get_client_records import GetClientRecords
+from .tools.call_manager import CallManager
 from .base_agent import BaseAgent
 from ..services.langgraph_service import LangGraphService
 

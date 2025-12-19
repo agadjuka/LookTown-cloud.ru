@@ -10,7 +10,7 @@ from ..logger_service import logger
 
 # Импортируем CallManagerException один раз, а не в цикле
 try:
-    from ...agents.tools.call_manager_tools import CallManagerException
+    from ...agents.tools.call_manager import CallManagerException
 except ImportError:
     CallManagerException = None
 
