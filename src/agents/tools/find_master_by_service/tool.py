@@ -27,7 +27,7 @@ class FindMasterByService(BaseModel):
     )
     
     service_name: str = Field(
-        description="Название услуги"
+        description="Название услуги которое сказал клиент"
     )
     
     def process(self, thread: Thread) -> str:

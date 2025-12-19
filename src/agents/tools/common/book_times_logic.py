@@ -114,3 +114,4 @@ def _merge_consecutive_slots(times: List[str]) -> List[str]:
     intervals.sort(key=_get_start_time_minutes)
     return intervals
 
+

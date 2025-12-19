@@ -313,3 +313,4 @@ def get_service_master_mapper() -> ServiceMasterMapper:
     """Получить глобальный экземпляр маппера"""
     return _service_master_mapper
 
+

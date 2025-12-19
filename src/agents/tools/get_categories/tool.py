@@ -41,7 +41,7 @@ class GetCategories(BaseModel):
                 categories.append(f"{cat_id}. {category_name}")
             
             result = "Доступные категории услуг:\n\n" + "\n".join(categories)
-            result += "\n\nДля получения услуг категории используйте GetServices с указанием ID категории."
+            result += "\n\n((Сохраняй форматирование))"
             
             return result
             

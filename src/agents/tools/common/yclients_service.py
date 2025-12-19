@@ -488,4 +488,32 @@ class YclientsService:
                             "data": None,
                             "error": f"Ошибка при переносе записи: HTTP {response.status}. {response_text[:500]}"
                         }
+    
+    async def get_all_services(self) -> List[Dict[str, Any]]:
+        """
+        Получить список всех услуг компании
+        
+        Returns:
+            List[Dict]: Список всех услуг с полной информацией
+        """
+        url = f"{self.BASE_URL}/company/{self.company_id}/services"
+        headers = {
+            "Accept": "application/vnd.yclients.v2+json",
+            "Authorization": self.auth_header,
+            "Content-Type": "application/json"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as response:
+                response.raise_for_status()
+                response_data = await response.json()
+                
+                # API возвращает данные в поле 'data'
+                if isinstance(response_data, dict) and 'data' in response_data:
+                    return response_data['data']
+                elif isinstance(response_data, list):
+                    return response_data
+                else:
+                    return []
+
 

@@ -54,3 +54,4 @@ def normalize_phone(phone: str) -> str:
     # Добавляем + в начало
     return '+' + cleaned
 
+

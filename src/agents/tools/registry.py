@@ -35,6 +35,7 @@ class ToolsRegistry:
             from .about_salon.tool import AboutSalon
             from .masters.tool import Masters
             from .greet.tool import Greet
+            from .find_service.tool import FindService
             
             # Регистрируем все инструменты
             tools_list = [
@@ -51,6 +52,7 @@ class ToolsRegistry:
                 AboutSalon,
                 Masters,
                 Greet,
+                FindService,
             ]
             
             for tool_class in tools_list:

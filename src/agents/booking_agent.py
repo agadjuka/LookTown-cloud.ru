@@ -8,6 +8,7 @@ from .tools.get_services import GetServices
 from .tools.find_slots import FindSlots
 from .tools.create_booking import CreateBooking
 from .tools.view_service import ViewService
+from .tools.find_service import FindService
 from .tools.call_manager import CallManager
 from .tools.masters import Masters
 
@@ -27,9 +28,10 @@ class BookingAgent(BaseAgent):
 Приветствие. Если клиент написал только приветствие, - tool greet.
 
 Шаг 1: Уточнение услуги
-Если клиент сказал на какую категорию хочет записаться (хочу записаться на маникюр), покажи полный список услуг из GetServices.
-Если клиент сказал просто "хочу записаться", покажи полный список категорий из GetCategories.
+1.1 Если клиент сказал на какую категорию хочет записаться (хочу записаться на маникюр), покажи полный список услуг из GetServices.
+1.2 Если клиент сказал просто "хочу записаться", покажи полный список категорий из GetCategories.
 Формулировка: "У нас есть следующие виды маникюра: [полный список услуг с ценами]".
+1.3 Если Клиент хочет записаться к конкретному мастеру (называет имя и название услуги), - tool FindMasterByService. Если только имя, то сначала уточни на какую услугу.
 
 Шаг 2: Предложение доступных слотов.
 Когда клиент выбрал конкретную услугу, используй инструмент FindSlots указав только ID услуги. В ответ ты получишь ближайшие 3 доступных дня. Скажи клиенту "Ближайшее доступное время для {название услуги в правильном падеже}: {14 ноября — 14:00|18:00}
@@ -50,6 +52,6 @@ class BookingAgent(BaseAgent):
         super().__init__(
             langgraph_service=langgraph_service,
             instruction=instruction,
-            tools=[GetCategories, GetServices, FindSlots, CreateBooking, ViewService, CallManager, Masters],
+            tools=[GetCategories, GetServices, FindSlots, CreateBooking, ViewService, FindService, CallManager, Masters],
             agent_name="Агент бронирования"
         )
