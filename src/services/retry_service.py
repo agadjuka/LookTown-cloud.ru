@@ -105,7 +105,7 @@ class RetryService:
                         chat_id=chat_id
                     )
                     # Выбрасываем специальное исключение с результатом эскалации
-                    # Это исключение будет обработано на нижнем уровне (playground/bot)
+                    # Это исключение будет обработано на нижнем уровне (bot)
                     raise CallManagerException(escalation_result)
                 
                 # Проверяем, является ли это InternalServerError
@@ -140,7 +140,7 @@ class RetryService:
                             chat_id=chat_id
                         )
                         # Выбрасываем специальное исключение с результатом эскалации
-                        # Это исключение будет обработано на нижнем уровне (playground/bot)
+                        # Это исключение будет обработано на нижнем уровне (bot)
                         raise CallManagerException(escalation_result)
                 else:
                     # Если это не InternalServerError, сразу выбрасываем исключение
@@ -196,7 +196,7 @@ class RetryService:
                         chat_id=chat_id
                     )
                     # Выбрасываем специальное исключение с результатом эскалации
-                    # Это исключение будет обработано на нижнем уровне (playground/bot)
+                    # Это исключение будет обработано на нижнем уровне (bot)
                     raise CallManagerException(escalation_result)
                 
                 # Проверяем, является ли это InternalServerError
@@ -231,7 +231,7 @@ class RetryService:
                             chat_id=chat_id
                         )
                         # Выбрасываем специальное исключение с результатом эскалации
-                        # Это исключение будет обработано на нижнем уровне (playground/bot)
+                        # Это исключение будет обработано на нижнем уровне (bot)
                         raise CallManagerException(escalation_result)
                 else:
                     # Если это не InternalServerError, сразу выбрасываем исключение

@@ -230,14 +230,6 @@
             font-size: 1.5em;
         }
 
-        .tool-description {
-            color: #666;
-            margin-bottom: 20px;
-            padding: 15px;
-            background: white;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
 
         .tool-param {
             margin-bottom: 15px;
@@ -265,11 +257,226 @@
             border-color: #667eea;
         }
 
+
+        .tool-description {
+            color: #495057;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.6;
+            font-size: 0.95em;
+            text-align: left;
+            text-indent: 0;
+        }
+
         .param-description {
             font-size: 0.9em;
             color: #666;
             margin-top: 5px;
             font-style: italic;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+
+        .tool-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .edit-btn {
+            padding: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1.2em;
+            cursor: pointer;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .edit-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Модальное окно */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e9ecef;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #495057;
+            font-size: 1.5em;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 2em;
+            color: #666;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #f0f0f0;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-body label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .modal-body textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            resize: none;
+            overflow-y: hidden;
+            overflow-x: hidden;
+            box-sizing: border-box;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .modal-body textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .modal-field-group {
+            margin-bottom: 25px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .modal-field-group:last-child {
+            border-bottom: none;
+        }
+
+        .modal-field-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 600;
+            color: #495057;
+            font-size: 1em;
+        }
+
+        .modal-field-group textarea {
+            min-height: 150px;
+            width: 100%;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .modal-btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .modal-btn.save {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+        }
+
+        .modal-btn.cancel {
+            background: #e9ecef;
+            color: #495057;
+        }
+
+        .modal-btn:hover {
+            transform: scale(1.05);
         }
 
         .tool-result {
@@ -390,6 +597,23 @@
     <div class="loading" id="loading">
         <div class="spinner"></div>
         <p style="margin-top: 15px; text-align: center; color: #495057;">Загрузка...</p>
+    </div>
+
+    <!-- Модальное окно для редактирования -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Редактирование</h3>
+                <button class="close-btn" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Поля будут добавлены динамически -->
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn cancel" onclick="closeModal()">Отмена</button>
+                <button class="modal-btn save" onclick="saveModalContent()">Сохранить</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -550,22 +774,31 @@
 
         // Загрузка инструментов
         let toolsData = [];
+        let toolsDescriptions = {};
 
         async function loadTools() {
             try {
-                const response = await fetch('/api/tools');
+                // Загружаем инструменты и описания параллельно
+                const [toolsResponse, descriptionsResponse] = await Promise.all([
+                    fetch('/api/tools'),
+                    fetch('/api/tools/descriptions')
+                ]);
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                if (!toolsResponse.ok) {
+                    throw new Error(`HTTP ${toolsResponse.status}: ${toolsResponse.statusText}`);
                 }
                 
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
+                const toolsData_result = await toolsResponse.json();
+                if (toolsData_result.error) {
+                    throw new Error(toolsData_result.error);
                 }
                 
-                toolsData = data.tools || [];
+                toolsData = toolsData_result.tools || [];
+                
+                if (descriptionsResponse.ok) {
+                    const descriptionsData = await descriptionsResponse.json();
+                    toolsDescriptions = descriptionsData.descriptions || {};
+                }
                 
                 renderTools();
             } catch (error) {
@@ -590,9 +823,57 @@
             }
 
             container.innerHTML = toolsData.map(tool => {
+                // Получаем описания из парсера или используем из toolsData
+                const toolDesc = toolsDescriptions[tool.name] || {};
+                const toolDescription = toolDesc.description || tool.description || '';
+                const paramDescriptions = toolDesc.parameters || {};
+                
+                // Описание инструмента (не редактируемое по умолчанию)
+                // Убираем лишние пробелы в начале и конце, убираем отступы в начале строк
+                let cleanedDescription = (toolDescription || 'Описание отсутствует').trim();
+                // Убираем общие отступы в начале всех строк (если они есть)
+                const lines = cleanedDescription.split('\n');
+                if (lines.length > 1) {
+                    // Находим минимальный отступ (количество пробелов в начале)
+                    let minIndent = Infinity;
+                    for (const line of lines) {
+                        if (line.trim()) { // Игнорируем пустые строки
+                            const indent = line.length - line.trimStart().length;
+                            if (indent < minIndent) {
+                                minIndent = indent;
+                            }
+                        }
+                    }
+                    // Убираем общий отступ
+                    if (minIndent > 0 && minIndent < Infinity) {
+                        cleanedDescription = lines.map(line => {
+                            if (line.trim()) {
+                                return line.substring(minIndent);
+                            }
+                            return line;
+                        }).join('\n');
+                    }
+                }
+                // Экранируем HTML
+                const escapedDescription = cleanedDescription
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+                
+                const toolDescriptionHtml = `
+                    <div class="tool-description">
+                        ${escapedDescription}
+                    </div>
+                `;
+                
                 const paramsHtml = tool.parameters.map(param => {
                     const inputType = param.type === 'number' ? 'number' : 
                                      param.type === 'boolean' ? 'checkbox' : 'text';
+                    
+                    // Получаем описание из парсера или из toolsData
+                    const paramDescription = paramDescriptions[param.name] || param.description || '';
                     
                     let inputHtml = '';
                     if (param.type === 'boolean') {
@@ -606,8 +887,7 @@
                         const defaultValue = param.default !== undefined && param.default !== null ? param.default : '';
                         inputHtml = `<input type="${inputType}" id="${tool.name}-${param.name}" 
                             value="${defaultValue}" 
-                            ${param.required ? 'required' : ''}
-                            placeholder="${param.description || ''}">`;
+                            ${param.required ? 'required' : ''}>`;
                     }
 
                     return `
@@ -616,15 +896,18 @@
                                 ${param.name} ${param.required ? '<span style="color: red;">*</span>' : ''}
                             </label>
                             ${inputHtml}
-                            ${param.description ? `<div class="param-description">${param.description}</div>` : ''}
+                            ${paramDescription ? `<div class="param-description">${paramDescription.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')}</div>` : ''}
                         </div>
                     `;
                 }).join('');
 
                 return `
                     <div class="tool-card">
-                        <h3>${tool.name}</h3>
-                        <div class="tool-description">${tool.description || 'Описание отсутствует'}</div>
+                        <div class="tool-card-header">
+                            <h3>${tool.name}</h3>
+                            <button class="edit-btn" onclick="openEditModal('${tool.name}')" title="Редактировать описания">✏️</button>
+                        </div>
+                        ${toolDescriptionHtml}
                         ${paramsHtml}
                         <button class="run-tool-btn" onclick="executeTool('${tool.name}')">▶ Запуск</button>
                         <div class="tool-result" id="${tool.name}-result"></div>
@@ -730,6 +1013,216 @@
                 btn.textContent = '▶ Запуск';
             }
         }
+
+        // Модальное окно
+        let currentEditContext = null; // {toolName}
+
+        function openEditModal(toolName) {
+            const modal = document.getElementById('editModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const modalBody = document.getElementById('modalBody');
+            
+            const tool = toolsData.find(t => t.name === toolName);
+            if (!tool) return;
+            
+            const toolDesc = toolsDescriptions[toolName] || {};
+            const toolDescription = toolDesc.description || tool.description || '';
+            const paramDescriptions = toolDesc.parameters || {};
+            
+            modalTitle.textContent = `Редактирование описаний: ${toolName}`;
+            currentEditContext = { toolName };
+            
+            // Очищаем содержимое
+            modalBody.innerHTML = '';
+            
+            // Описание инструмента
+            const toolDescGroup = document.createElement('div');
+            toolDescGroup.className = 'modal-field-group';
+            
+            const toolDescLabel = document.createElement('label');
+            toolDescLabel.textContent = 'Описание инструмента:';
+            toolDescGroup.appendChild(toolDescLabel);
+            
+            const toolDescTextarea = document.createElement('textarea');
+            toolDescTextarea.id = 'modal-tool-description';
+            toolDescTextarea.className = 'modal-body textarea';
+            toolDescTextarea.value = toolDescription;
+            toolDescGroup.appendChild(toolDescTextarea);
+            
+            modalBody.appendChild(toolDescGroup);
+            
+            // Описания полей
+            tool.parameters.forEach(param => {
+                const paramDescription = paramDescriptions[param.name] || param.description || '';
+                
+                const paramGroup = document.createElement('div');
+                paramGroup.className = 'modal-field-group';
+                
+                const paramLabel = document.createElement('label');
+                paramLabel.textContent = `Описание поля "${param.name}":`;
+                paramGroup.appendChild(paramLabel);
+                
+                const paramTextarea = document.createElement('textarea');
+                paramTextarea.id = `modal-param-${param.name}`;
+                paramTextarea.className = 'modal-body textarea';
+                paramTextarea.value = paramDescription;
+                paramGroup.appendChild(paramTextarea);
+                
+                modalBody.appendChild(paramGroup);
+            });
+            
+            // Автоматическое изменение размера textarea
+            const allTextareas = modalBody.querySelectorAll('textarea');
+            allTextareas.forEach(textarea => {
+                // Функция для установки правильной высоты
+                const adjustHeight = function() {
+                    // Временно убираем ограничение высоты для правильного расчета
+                    const originalHeight = this.style.height;
+                    const originalOverflow = this.style.overflow;
+                    this.style.height = 'auto';
+                    this.style.overflow = 'hidden';
+                    
+                    // Получаем реальную высоту содержимого
+                    const scrollHeight = this.scrollHeight;
+                    
+                    // Устанавливаем новую высоту с запасом
+                    const newHeight = Math.max(150, scrollHeight + 10);
+                    this.style.height = newHeight + 'px';
+                    this.style.overflowY = 'hidden';
+                    this.style.overflowX = 'hidden';
+                    
+                    // Проверяем, что весь текст виден
+                    if (this.scrollHeight > newHeight) {
+                        this.style.height = (this.scrollHeight + 10) + 'px';
+                    }
+                };
+                
+                // Устанавливаем начальную высоту после того, как элемент добавлен в DOM
+                // Используем requestAnimationFrame для гарантии, что элемент отрендерен
+                requestAnimationFrame(() => {
+                    adjustHeight.call(textarea);
+                    requestAnimationFrame(() => {
+                        adjustHeight.call(textarea);
+                    });
+                });
+                
+                // Дополнительные попытки для надежности
+                setTimeout(() => {
+                    adjustHeight.call(textarea);
+                }, 50);
+                
+                setTimeout(() => {
+                    adjustHeight.call(textarea);
+                }, 150);
+                
+                // Автоматическое изменение размера при вводе
+                textarea.addEventListener('input', adjustHeight);
+                
+                // Также при вставке текста
+                textarea.addEventListener('paste', function() {
+                    setTimeout(() => adjustHeight.call(this), 10);
+                });
+                
+                // При изменении размера окна
+                window.addEventListener('resize', () => {
+                    setTimeout(() => adjustHeight.call(textarea), 10);
+                });
+            });
+            
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('editModal');
+            modal.classList.remove('active');
+            currentEditContext = null;
+        }
+
+        async function saveModalContent() {
+            if (!currentEditContext) return;
+            
+            const toolName = currentEditContext.toolName;
+            const tool = toolsData.find(t => t.name === toolName);
+            if (!tool) return;
+            
+            showLoading();
+            try {
+                // Сохраняем описание инструмента
+                const toolDescTextarea = document.getElementById('modal-tool-description');
+                if (toolDescTextarea) {
+                    let toolDescription = toolDescTextarea.value.trim();
+                    
+                    const response = await fetch(`/api/tools/${toolName}/description`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ description: toolDescription }),
+                    });
+                    
+                    if (response.ok) {
+                        if (!toolsDescriptions[toolName]) {
+                            toolsDescriptions[toolName] = {};
+                        }
+                        toolsDescriptions[toolName].description = toolDescription;
+                    }
+                }
+                
+                // Сохраняем описания полей
+                for (const param of tool.parameters) {
+                    const paramTextarea = document.getElementById(`modal-param-${param.name}`);
+                    if (paramTextarea) {
+                        let paramDescription = paramTextarea.value.trim();
+                        
+                        const response = await fetch(`/api/tools/${toolName}/parameters/${param.name}/description`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ description: paramDescription }),
+                        });
+                        
+                        if (response.ok) {
+                            if (!toolsDescriptions[toolName]) {
+                                toolsDescriptions[toolName] = { parameters: {} };
+                            }
+                            if (!toolsDescriptions[toolName].parameters) {
+                                toolsDescriptions[toolName].parameters = {};
+                            }
+                            toolsDescriptions[toolName].parameters[param.name] = paramDescription;
+                        }
+                    }
+                }
+                
+                showNotification('Все описания успешно сохранены!', 'success');
+                
+                // Перерисовываем инструменты
+                renderTools();
+                closeModal();
+                hideLoading();
+            } catch (error) {
+                showNotification('Ошибка сохранения: ' + error.message, 'error');
+                hideLoading();
+            }
+        }
+
+        // Закрытие модального окна при клике вне его
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target === modal) {
+                closeModal();
+            }
+        }
+
+        // Закрытие модального окна при нажатии Escape
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const modal = document.getElementById('editModal');
+                if (modal.classList.contains('active')) {
+                    closeModal();
+                }
+            }
+        });
     </script>
 </body>
 </html>

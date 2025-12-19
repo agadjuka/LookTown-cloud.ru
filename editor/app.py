@@ -29,6 +29,8 @@ sys.path.insert(0, str(editor_path))
 from parser import PromptParser
 from updater import PromptUpdater
 from tools_helper import get_all_tools, get_tool_info, execute_tool
+from tools_parser import ToolsParser
+from tools_updater import ToolsUpdater
 
 # Указываем путь к шаблонам
 template_dir = Path(__file__).parent / "templates"
@@ -37,6 +39,8 @@ app = Flask(__name__, template_folder=str(template_dir))
 # Путь к корню проекта (относительный)
 parser = PromptParser(project_root)
 updater = PromptUpdater(project_root)
+tools_parser = ToolsParser(project_root)
+tools_updater = ToolsUpdater(project_root)
 
 
 @app.route("/")
@@ -112,6 +116,49 @@ def execute_tool_endpoint(tool_name):
         return jsonify(result)
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/tools/descriptions", methods=["GET"])
+def get_tools_descriptions():
+    """Получить описания всех инструментов и их полей."""
+    try:
+        descriptions = tools_parser.parse_all_tools()
+        return jsonify({"descriptions": descriptions})
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR API] Ошибка получения описаний инструментов: {error_msg}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tools/<tool_name>/description", methods=["PUT"])
+def update_tool_description(tool_name):
+    """Обновить описание инструмента."""
+    try:
+        new_description = request.json.get("description", "")
+        
+        tools_updater.update_tool_description(tool_name, new_description)
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR API] Ошибка обновления описания инструмента: {error_msg}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/tools/<tool_name>/parameters/<param_name>/description", methods=["PUT"])
+def update_parameter_description(tool_name, param_name):
+    """Обновить описание поля инструмента."""
+    try:
+        new_description = request.json.get("description", "")
+        
+        tools_updater.update_parameter_description(tool_name, param_name, new_description)
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR API] Ошибка обновления описания поля: {error_msg}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":

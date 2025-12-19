@@ -39,7 +39,7 @@ class AboutSalonDataLoader:
     def _load_from_file(self) -> Dict:
         """Загрузка из файла проекта"""
         project_root = Path(__file__).parent.parent.parent.parent
-        file_path = project_root / self.file_path
+        file_path = project_root / 'Files' / self.file_path
         
         if not file_path.exists():
             raise FileNotFoundError(f"Файл {file_path} не найден")
