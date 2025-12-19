@@ -9,7 +9,6 @@ from .base_agent import BaseAgent
 from .dialogue_stages import DialogueStage
 from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
-from .tools.call_manager import CallManager
 
 
 class StageDetection(BaseModel):
@@ -23,23 +22,20 @@ class StageDetectorAgent(BaseAgent):
     """Агент для определения стадии диалога"""
     
     def __init__(self, langgraph_service: LangGraphService):
-        instruction = """Прочитай последнее сообщение клиента и ознакомься с историей переписки. Определи, какая стадия диалога подходит больше всего. Учитывай историю переписки если идёт непрерывный процесс. Но последнее сообщение ключевое, человек может начать говорить на другую тему, тогда используй другую стадию.
-
-
-**СПИСОК СТАДИЙ:**
-
-- booking: клиент хочет записаться на услугу (запишите, хочу на.., можно записаться? и т.д.), либо узнать когда есть доступное время для записи (когда есть время, когда можно прийти и т.д.), либо задает общие вопросы об услугах, ценах, мастерах. Если клиент явно попросил записать его к конкретному мастеру и написал его имя, тоже используй стадию booking.
+        instruction = """Прочитай последнее сообщение клиента и ознакомься с историей переписки. Определи, какой агент подходит больше всего. 
+**СПИСОК Агентов:**
+- booking: основной агент, связанный с записями на услугу либо получением информации об услугах, салоне и тд. Выбирай всегда когда не подходят другие агенты.
 - cancellation_request: Клиент просит отменить существующую запись.
 - reschedule: Клиент просит перенести существующую запись на другую дату или время. Говорит что опаздывает и т.д.
 - view_my_booking: Клиент хочет посмотреть свои предстоящие записи ("на когда я записан?", "какие у меня записи?").
 
-Верни ТОЛЬКО одно слово - название стадии. 
-ИСКЛЮЧЕНИЕ: используй инструмент CallManager, если клиент явно просит позвать менеджера либо ругается."""
+Верни ТОЛЬКО одно слово - название стадии. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ОТВЕЧАТЬ КЛИЕНТУ
+"""
         
         super().__init__(
             langgraph_service=langgraph_service,
             instruction=instruction,
-            tools=[CallManager],
+            tools=[],
             agent_name="Определитель стадий диалога"
         )
     
@@ -51,11 +47,6 @@ class StageDetectorAgent(BaseAgent):
         response = self(message, history, chat_id=chat_id)
         
         logger.debug(f"Получен ответ от агента определения стадии: {response[:200] if response else 'None/Empty'}")
-        
-        # Если CallManager был вызван, BaseAgent вернет "[CALL_MANAGER_RESULT]"
-        if response == "[CALL_MANAGER_RESULT]":
-            logger.info("CallManager был вызван в StageDetectorAgent")
-            return StageDetection(stage=DialogueStage.BOOKING.value)
         
         # Парсим ответ
         detection = self._parse_response(response)
