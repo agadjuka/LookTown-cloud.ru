@@ -5,7 +5,6 @@ import os
 import requests
 from typing import Literal, Optional, Any
 from src.services.logger_service import logger
-from src.services.auth_service import AuthService
 
 
 class SpeechTooLongError(Exception):
@@ -41,7 +40,7 @@ class SpeechKitSTTService:
 _speechkit_stt_service: Optional[SpeechKitSTTService] = None
 
 
-def get_speechkit_stt_service(auth_service: Optional[AuthService] = None) -> SpeechKitSTTService:
+def get_speechkit_stt_service(auth_service: Optional[Any] = None) -> SpeechKitSTTService:
     """
     Получить singleton экземпляр SpeechKitSTTService
     

@@ -1,7 +1,7 @@
 """
 Фабрика для создания и инициализации сервисов
 """
-from src.services import AuthService, DebugService, EscalationService, LangGraphService
+from src.services import DebugService, EscalationService, LangGraphService
 from src.services.agent_service import AgentService
 
 
@@ -9,17 +9,10 @@ class ServiceFactory:
     """Фабрика для создания сервисов с правильными зависимостями"""
     
     def __init__(self):
-        self._auth_service = None
         self._debug_service = None
         self._agent_service = None
         self._escalation_service = None
         self._langgraph_service = None
-    
-    def get_auth_service(self) -> AuthService:
-        """Получить экземпляр AuthService"""
-        if self._auth_service is None:
-            self._auth_service = AuthService()
-        return self._auth_service
     
     def get_debug_service(self) -> DebugService:
         """Получить экземпляр DebugService"""

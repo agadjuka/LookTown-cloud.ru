@@ -5,7 +5,6 @@ from telegram import Update
 from typing import Optional, Tuple
 from src.services.logger_service import logger
 from src.services.speechkit_stt import get_speechkit_stt_service, SpeechTooLongError
-from src.services.auth_service import AuthService
 
 
 async def download_voice_to_memory(bot, file_id: str) -> bytes:
@@ -54,8 +53,7 @@ async def transcribe_voice_message(
         
         # Транскрибируем через SpeechKit STT
         try:
-            auth_service = AuthService()
-            stt_service = get_speechkit_stt_service(auth_service=auth_service)
+            stt_service = get_speechkit_stt_service()
             transcribed_text = stt_service.transcribe(
                 audio_bytes=audio_bytes,
                 mime_type=mime_type,
@@ -116,4 +114,3 @@ async def extract_message_text(
         # Текстовое сообщение
         logger.telegram("Получено сообщение", chat_id)
         return update.message.text, None, False
-

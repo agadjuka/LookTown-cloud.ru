@@ -214,7 +214,7 @@ class AgentService:
                 conversation_repo.create_new_conversation,
                 telegram_user_id
             )
-            logger.info(f"Создан новый диалог: conversation_id={new_conversation_id} для telegram_user_id={telegram_user_id}")
+            # Логирование создания диалога уже есть в conversation_repo
             
             # Очищаем историю результатов инструментов
             try:
@@ -225,6 +225,6 @@ class AgentService:
             except Exception as e:
                 logger.debug(f"Ошибка при очистке истории результатов инструментов: {e}")
             
-            logger.success("Контекст сброшен", chat_id)
+            # Логирование успеха уже есть в bot.py
         except Exception as e:
             logger.error("Ошибка при сбросе контекста", str(e))

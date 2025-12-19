@@ -139,9 +139,8 @@ class ConversationRepository:
     
     def create_new_conversation(self, telegram_user_id: int) -> str:
         """
-        Создать новый диалог для пользователя (для команды /new)
-        
-        Старый диалог можно архивировать или удалить (сейчас просто создаём новый)
+        Создать новый диалог для пользователя (для команды /new).
+        Удаляет старый диалог и все сообщения перед созданием нового.
         
         Args:
             telegram_user_id: ID пользователя в Telegram
@@ -149,7 +148,21 @@ class ConversationRepository:
         Returns:
             UUID нового диалога
         """
-        # Создаём новый conversation_id
+        # 1. Находим старые диалоги (чтобы удалить сообщения, если нет CASCADE)
+        find_query = "SELECT id FROM public.conversations WHERE telegram_user_id = %s"
+        old_conversations = self.pg_client.execute_query(find_query, (telegram_user_id,), fetch=True)
+        
+        if old_conversations:
+            for row in old_conversations:
+                conv_id = row[0]
+                # Удаляем сообщения (на случай если нет ON DELETE CASCADE)
+                self.pg_client.execute_query("DELETE FROM public.messages WHERE conversation_id = %s", (conv_id,))
+            
+            # 2. Удаляем сами диалоги
+            self.pg_client.execute_query("DELETE FROM public.conversations WHERE telegram_user_id = %s", (telegram_user_id,))
+            logger.info(f"🗑️ Удалены старые диалоги для telegram_user_id={telegram_user_id}")
+
+        # 3. Создаём новый conversation_id
         new_conversation_id = str(uuid.uuid4())
         
         insert_query = """
