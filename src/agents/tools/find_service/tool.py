@@ -57,12 +57,6 @@ class FindService(BaseModel):
             
             # Форматируем результат
             result_lines = []
-            if len(services) == 1:
-                result_lines.append("Найдена услуга:")
-            else:
-                result_lines.append(f"Найдено услуг: {len(services)}")
-            
-            result_lines.append("")
             
             for idx, service in enumerate(services, start=1):
                 title = service.get('title', 'Неизвестно')
@@ -70,6 +64,10 @@ class FindService(BaseModel):
                 price = service.get('price', 'Не указана')
                 
                 result_lines.append(f"{idx}. {title} (ID: {service_id}) - {price} руб.")
+            
+            # Добавляем инструкцию в конце
+            result_lines.append("")
+            result_lines.append("((Не отправляй клиенту ID, строго сохраняй форматирование))")
             
             return "\n".join(result_lines)
             

@@ -86,9 +86,6 @@ class ViewService(BaseModel):
                 else:
                     result_lines.append(f"Цена: {price_min or 'от'} - {price_max or 'до'} руб.")
             
-            active = service.get('active', True)
-            result_lines.append(f"Статус: {'Активна' if active else 'Неактивна'}")
-            
             comment = service.get('comment')
             if comment:
                 result_lines.append(f"\nОписание:\n{comment}")

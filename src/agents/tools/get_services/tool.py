@@ -89,6 +89,7 @@ class GetServices(BaseModel):
         # Добавляем инструкцию в конце
         result_lines.append("")
         result_lines.append("((Не отправляй клиенту ID, строго сохраняй форматирование))")
+        result_lines.append("((Формулировка: 'У нас есть следующие виды (напр. маникюра): [полный список услуг с ценами]'))")
         
         return "\n".join(result_lines)
     
