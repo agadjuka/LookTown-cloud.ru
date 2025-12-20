@@ -46,7 +46,9 @@ def _conversation_state_to_booking_substate(
     """
     Извлекает BookingSubState из ConversationState после выполнения узла
     
-    Не затирает существующие данные None-ами из booking_data
+    Критические поля (service_id, slot_time, master_id) обновляются даже если значение None
+    (для поддержки явного сброса при смене темы).
+    Остальные поля обновляются только если значение не None.
     
     Args:
         conversation_state: Состояние после выполнения узла
@@ -59,14 +61,20 @@ def _conversation_state_to_booking_substate(
     extracted_info = conversation_state.get("extracted_info") or {}
     booking_data = extracted_info.get("booking", {})
     
-    # Объединяем с текущим состоянием (не затираем существующие данные None-ами)
+    # Объединяем с текущим состоянием
     updated_state = dict(current_booking_state)
     
+    # Критические поля, которые могут быть явно сброшены в None
+    critical_fields = {"service_id", "slot_time", "master_id", "master_name"}
+    
     for key, value in booking_data.items():
-        # Обновляем только если значение не None и не пустое
-        if value is not None and value != "":
+        # Для критических полей обновляем даже если значение None (явный сброс)
+        if key in critical_fields:
             updated_state[key] = value
-        # Если значение None в booking_data, но есть в current_booking_state, оставляем current_booking_state
+        # Для остальных полей обновляем только если значение не None и не пустое
+        elif value is not None and value != "":
+            updated_state[key] = value
+        # Если значение None в booking_data для некритических полей, оставляем текущее значение
     
     logger.debug(f"_conversation_state_to_booking_substate: current={current_booking_state}, booking_data={booking_data}, result={updated_state}")
     
@@ -155,6 +163,10 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     """
     booking_state = state.get("booking", {})
     
+    # Логируем текущее состояние для отладки
+    service_id = booking_state.get("service_id")
+    logger.debug(f"route_booking: service_id={service_id} (type={type(service_id)}, is None={service_id is None})")
+    
     # 1. Если финализировано — выход
     if booking_state.get("is_finalized"):
         logger.info("Бронирование финализировано, завершаем граф")
@@ -162,8 +174,8 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     
     # 2. Если нет ID услуги — идем выбирать услугу (даже если есть название, ID важнее)
     # Используем явную проверку на None
-    if booking_state.get("service_id") is None:
-        logger.info("service_id отсутствует, маршрутизируем в service_manager")
+    if service_id is None:
+        logger.info(f"service_id отсутствует (значение: {service_id}), маршрутизируем в service_manager")
         return "service_manager"
     
     # 3. Если нет времени слота — идем искать слоты
