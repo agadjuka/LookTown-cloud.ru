@@ -181,14 +181,11 @@ class MainGraph:
         }
     
     def _handle_booking(self, state: ConversationState) -> ConversationState:
-        """Обработка бронирования"""
-        logger.info("Обработка бронирования")
-        message = state["message"]
-        history = state.get("history")
-        chat_id = state.get("chat_id")
+        """Обработка бронирования через граф состояний"""
+        logger.info("Обработка бронирования через граф")
         
-        agent_result = self.booking_agent(message, history, chat_id=chat_id)
-        return self._process_agent_result(self.booking_agent, agent_result, state, "BookingAgent")
+        # Используем новый метод process_booking, который работает с графом
+        return self.booking_agent.process_booking(state)
     
     def _handle_cancellation_request(self, state: ConversationState) -> ConversationState:
         """Обработка отмены"""

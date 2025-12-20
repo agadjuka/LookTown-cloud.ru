@@ -23,3 +23,4 @@ class BookingSubState(TypedDict, total=False):
     client_name: Optional[str]              # Имя клиента
     client_phone: Optional[str]            # Телефон клиента
     dialog_step: str                       # Текущий шаг диалога (из DialogStep)
+    is_finalized: Optional[bool]           # Флаг завершения бронирования
