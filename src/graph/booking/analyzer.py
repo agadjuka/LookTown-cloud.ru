@@ -51,11 +51,11 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
 ТВОЯ ЦЕЛЬ: Вернуть ТОЛЬКО валидный JSON с обновленными полями.
 1. Если клиент явно выбирает услугу (например, 'Хочу вторую', 'Запиши на стрижку'), и ты можешь понять ID из контекста истории или названия — извлеки `service_id` (состоит из 8 цифр, не путай с номерами в списках) (int) или хотя бы `service_name` (str).
    ВАЖНО: Если в истории есть результаты инструментов (сообщения с role="tool"), используй их для извлечения service_id. 
-   Например, если в результате GetServices есть "МАНИКЮР+ПОКРЫТИЕ ГЕЛЬ-ЛАК (ID: 16659735)", то service_id = 16659735.
 2. Если клиент называет дату/время — извлеки `slot_time` в формате "YYYY-MM-DD HH:MM" (например, "2024-12-25 14:30").
 3. Если клиент называет имя — извлеки `client_name` (str).
 4. Если клиент называет телефон — извлеки `client_phone` (str, только цифры или с +).
 5. Если клиент выбирает мастера — извлеки `master_id` (int) или `master_name` (str). (мастер/топ мастер/юниор не являются ID или именем, это категории услуг, используй их для выбора услуги)
+6. Если клиент передумал и начал запись на другую услугу - начинай заново.
 
 ВАЖНО:
 - Верни ТОЛЬКО JSON объект с полями, которые ты извлек или обновил.
@@ -225,15 +225,80 @@ def _merge_booking_state(
     """
     Объединяет текущее состояние с извлеченными данными
     
-    Не затирает существующие данные None-ами из extracted_data
+    При перезаписи ключевых полей очищает зависимые поля:
+    - При перезаписи service_id/service_name → очищает master_id, master_name, slot_time, client_name, client_phone
+    - При перезаписи master_id/master_name → очищает slot_time, client_name, client_phone
+    - При перезаписи slot_time → очищает client_name, client_phone
+    - При перезаписи client_name → очищает client_phone
+    - При перезаписи client_phone → очищает client_name
     """
     merged = current_state.copy()
+    
+    # Определяем, какие поля были перезаписаны
+    service_changed = False
+    master_changed = False
+    slot_changed = False
+    name_changed = False
+    phone_changed = False
     
     for key, value in extracted_data.items():
         # Обновляем только если значение не None и не пустое
         if value is not None and value != "":
-            merged[key] = value
-        # Если значение явно None в extracted_data, но есть в current_state, оставляем current_state
+            # Проверяем, было ли это поле изменено (значение отличается от текущего)
+            current_value = merged.get(key)
+            if current_value != value:
+                merged[key] = value
+                
+                # Отмечаем, какие поля были изменены
+                if key in ("service_id", "service_name"):
+                    service_changed = True
+                elif key in ("master_id", "master_name"):
+                    master_changed = True
+                elif key == "slot_time":
+                    slot_changed = True
+                elif key == "client_name":
+                    name_changed = True
+                elif key == "client_phone":
+                    phone_changed = True
+            else:
+                # Значение не изменилось, просто обновляем
+                merged[key] = value
+    
+    # Очищаем зависимые поля при перезаписи ключевых
+    if service_changed:
+        # При изменении услуги очищаем все зависимые поля
+        # Также очищаем парное поле услуги (если меняется service_id, очищаем service_name и наоборот)
+        # Это нужно, чтобы избежать конфликтов между старым ID и новым названием
+        if "service_id" in extracted_data:
+            # Если обновляется service_id, очищаем service_name (если он не был обновлен)
+            if "service_name" not in extracted_data:
+                merged.pop("service_name", None)
+        if "service_name" in extracted_data:
+            # Если обновляется service_name, очищаем service_id (если он не был обновлен)
+            if "service_id" not in extracted_data:
+                merged.pop("service_id", None)
+        
+        # Очищаем все зависимые поля (мастер, время, контакты)
+        merged.pop("master_id", None)
+        merged.pop("master_name", None)
+        merged.pop("slot_time", None)
+        merged.pop("client_name", None)
+        merged.pop("client_phone", None)
+    elif master_changed:
+        # При изменении мастера очищаем время и контакты
+        merged.pop("slot_time", None)
+        merged.pop("client_name", None)
+        merged.pop("client_phone", None)
+    elif slot_changed:
+        # При изменении времени очищаем контакты
+        merged.pop("client_name", None)
+        merged.pop("client_phone", None)
+    elif name_changed:
+        # При изменении имени очищаем телефон
+        merged.pop("client_phone", None)
+    elif phone_changed:
+        # При изменении телефона очищаем имя
+        merged.pop("client_name", None)
     
     return merged
 
