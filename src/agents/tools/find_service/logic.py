@@ -224,181 +224,226 @@ async def find_master_by_service_logic(
                 "error": "Не удалось получить список мастеров"
             }
         
-        # 2. Находим всех кандидатов по имени
+        # 2. Находим всех кандидатов по имени с использованием умного поиска
         mapper = get_service_master_mapper()
-        search_variants = _get_name_variants(master_name)
-        normalized_search = _normalize_name(master_name)
         
-        candidates = []
-        for staff in staff_list:
-            staff_name = staff.get("name", "")
-            if not staff_name or staff_name == "Лист ожидания":
-                continue
-            
-            normalized_staff_name = _normalize_name(staff_name)
-            
-            # Проверяем точное совпадение
-            if normalized_staff_name == normalized_search:
-                candidates.append(staff)
-                continue
-            
-            # Проверяем варианты имени
-            staff_variants = _get_name_variants(staff_name)
-            if any(variant in search_variants for variant in staff_variants):
-                candidates.append(staff)
-                continue
-            
-            # Проверяем частичное совпадение
-            if normalized_search in normalized_staff_name or normalized_staff_name in normalized_search:
-                candidates.append(staff)
+        # Используем умный поиск для нахождения наиболее релевантных мастеров
+        master_matches = _service_matcher.find_best_masters(
+            staff_list,
+            master_name,
+            min_relevance=30.0,
+            max_results=10
+        )
         
-        if not candidates:
+        if not master_matches:
             return {
                 "success": False,
                 "error": f"Мастер с именем '{master_name}' не найден"
             }
         
-        # 3. Если найден только один кандидат, возвращаем его
-        if len(candidates) == 1:
-            found_master = candidates[0]
+        # 3. Фильтруем кандидатов по максимальной релевантности имени
+        if not master_matches:
+            return {
+                "success": False,
+                "error": f"Мастер с именем '{master_name}' не найден"
+            }
+        
+        # Находим максимальную релевантность
+        max_relevance = max(relevance for _, relevance in master_matches)
+        
+        # Оставляем только мастеров с максимальной релевантностью
+        top_candidates = [(master, relevance) for master, relevance in master_matches if relevance == max_relevance]
+        
+        # Переменная для сохранения найденных услуг (если уже найдены при выборе мастера)
+        pre_found_services = None
+        
+        # Если только один кандидат с максимальной релевантностью
+        if len(top_candidates) == 1:
+            found_master, _ = top_candidates[0]
         else:
-            # 4. Если несколько кандидатов, фильтруем по услуге
-            # Сначала проверяем по должности
-            suitable_candidates = []
-            for candidate in candidates:
-                position = candidate.get("position", {})
-                position_title = position.get("title", "") if position else ""
-                position_description = position.get("description", "") if position else ""
-                specialization = candidate.get("specialization", "")
-                
-                if mapper.is_master_suitable(
-                    position_title, 
-                    service_name,
-                    position_description,
-                    specialization
-                ):
-                    suitable_candidates.append(candidate)
+            # 4. Если несколько кандидатов с максимальной релевантностью, проверяем их услуги
+            # Для каждого мастера получаем услуги и ищем релевантные
+            best_master = None
+            best_services_count = 0
+            best_services = []
             
-            # Если нашли подходящих по должности, проверяем их услуги
-            if suitable_candidates:
-                # Проверяем, у кого из подходящих есть услуги из нужной категории
-                best_candidate = None
-                for candidate in suitable_candidates:
-                    if await _check_master_has_service_category(yclients_service, candidate, service_name):
-                        best_candidate = candidate
-                        break
+            for candidate_master, _ in top_candidates:
+                # Получаем услуги мастера
+                services_links = candidate_master.get("services_links", [])
+                if not services_links:
+                    continue
                 
-                if best_candidate:
-                    found_master = best_candidate
-                else:
-                    # Если не нашли по услугам, берем первого подходящего по должности
-                    found_master = suitable_candidates[0]
+                service_ids = [link.get("service_id") for link in services_links if link.get("service_id")]
+                if not service_ids:
+                    continue
+                
+                # Получаем детали услуг
+                tasks = [
+                    yclients_service.get_service_details(service_id)
+                    for service_id in service_ids
+                ]
+                service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Формируем список услуг
+                candidate_services_list = []
+                for idx, service_details in enumerate(service_details_list):
+                    if isinstance(service_details, Exception):
+                        continue
+                    
+                    if idx >= len(service_ids):
+                        continue
+                    
+                    service_id = service_ids[idx]
+                    service_title = service_details.get_title()
+                    if service_title == "Лист ожидания":
+                        continue
+                    
+                    price_min = service_details.price_min
+                    price_max = service_details.price_max
+                    
+                    if price_min is not None and price_max is not None:
+                        if price_min == price_max:
+                            price = f"{int(price_min)}"
+                        else:
+                            price = f"{int(price_min)} - {int(price_max)}"
+                    elif price_min is not None:
+                        price = f"{int(price_min)}"
+                    elif price_max is not None:
+                        price = f"{int(price_max)}"
+                    else:
+                        price = "Не указана"
+                    
+                    candidate_services_list.append({
+                        "id": service_id,
+                        "title": service_title,
+                        "duration": service_details.duration,
+                        "price": price
+                    })
+                
+                if not candidate_services_list:
+                    continue
+                
+                # Ищем релевантные услуги у этого мастера
+                service_matches = _service_matcher.find_best_matches(
+                    candidate_services_list,
+                    service_name,
+                    min_relevance=30.0,
+                    max_results=15
+                )
+                
+                # Считаем количество релевантных услуг
+                relevant_services_count = len(service_matches)
+                
+                # Выбираем мастера с наибольшим количеством релевантных услуг
+                if relevant_services_count > best_services_count:
+                    best_master = candidate_master
+                    best_services_count = relevant_services_count
+                    best_services = [service for service, _ in service_matches]
+            
+            # Если нашли мастера с релевантными услугами
+            if best_master:
+                found_master = best_master
+                # Сохраняем найденные услуги для дальнейшего использования
+                pre_found_services = best_services
             else:
-                # Если не нашли по должности, проверяем услуги всех кандидатов
-                best_candidate = None
-                for candidate in candidates:
-                    if await _check_master_has_service_category(yclients_service, candidate, service_name):
-                        best_candidate = candidate
-                        break
-                
-                if best_candidate:
-                    found_master = best_candidate
-                else:
-                    # Если ничего не нашли, возвращаем первого кандидата
-                    found_master = candidates[0]
+                # Если ни у кого нет релевантных услуг, берем первого кандидата
+                found_master = top_candidates[0][0]
+                pre_found_services = None
         
         master_id = found_master.get("id")
         master_name_result = found_master.get("name", "")
         position = found_master.get("position", {})
         position_title = position.get("title", "") if position else ""
         
-        # 5. Получаем список услуг мастера из services_links
-        services_links = found_master.get("services_links", [])
-        
-        if not services_links:
-            return {
-                "success": False,
-                "error": f"У мастера {master_name_result} нет доступных услуг"
-            }
-        
-        # 6. Параллельно получаем детали всех услуг
-        service_ids = [link.get("service_id") for link in services_links if link.get("service_id")]
-        
-        if not service_ids:
-            return {
-                "success": False,
-                "error": f"Не удалось получить список услуг мастера {master_name_result}"
-            }
-        
-        tasks = [
-            yclients_service.get_service_details(service_id)
-            for service_id in service_ids
-        ]
-        
-        service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # 7. Формируем список услуг с релевантностью
-        services_with_relevance = []
-        for idx, service_details in enumerate(service_details_list):
-            if isinstance(service_details, Exception):
-                continue
+        # 5. Если услуги уже найдены при выборе мастера, используем их
+        if pre_found_services is not None:
+            services = pre_found_services
+        else:
+            # Иначе получаем услуги выбранного мастера
+            services_links = found_master.get("services_links", [])
             
-            if idx >= len(service_ids):
-                continue
+            if not services_links:
+                return {
+                    "success": False,
+                    "error": f"У мастера {master_name_result} нет доступных услуг"
+                }
             
-            service_id = service_ids[idx]
-            service_title = service_details.get_title()
-            if service_title == "Лист ожидания":
-                continue
+            # 6. Параллельно получаем детали всех услуг
+            service_ids = [link.get("service_id") for link in services_links if link.get("service_id")]
             
-            # Вычисляем релевантность услуги к поисковому запросу
-            relevance = _calculate_service_relevance(service_title, service_name)
+            if not service_ids:
+                return {
+                    "success": False,
+                    "error": f"Не удалось получить список услуг мастера {master_name_result}"
+                }
             
-            # Получаем цену услуги
-            price_min = service_details.price_min
-            price_max = service_details.price_max
+            tasks = [
+                yclients_service.get_service_details(service_id)
+                for service_id in service_ids
+            ]
             
-            # Формируем цену
-            if price_min is not None and price_max is not None:
-                if price_min == price_max:
+            service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # 7. Формируем список услуг для умного поиска
+            services_list = []
+            for idx, service_details in enumerate(service_details_list):
+                if isinstance(service_details, Exception):
+                    continue
+                
+                if idx >= len(service_ids):
+                    continue
+                
+                service_id = service_ids[idx]
+                service_title = service_details.get_title()
+                if service_title == "Лист ожидания":
+                    continue
+                
+                # Получаем цену услуги
+                price_min = service_details.price_min
+                price_max = service_details.price_max
+                
+                # Формируем цену
+                if price_min is not None and price_max is not None:
+                    if price_min == price_max:
+                        price = f"{int(price_min)}"
+                    else:
+                        price = f"{int(price_min)} - {int(price_max)}"
+                elif price_min is not None:
                     price = f"{int(price_min)}"
+                elif price_max is not None:
+                    price = f"{int(price_max)}"
                 else:
-                    price = f"{int(price_min)} - {int(price_max)}"
-            elif price_min is not None:
-                price = f"{int(price_min)}"
-            elif price_max is not None:
-                price = f"{int(price_max)}"
-            else:
-                price = "Не указана"
+                    price = "Не указана"
+                
+                services_list.append({
+                    "id": service_id,
+                    "title": service_title,
+                    "duration": service_details.duration,
+                    "price": price
+                })
             
-            services_with_relevance.append({
-                "id": service_id,
-                "title": service_title,
-                "duration": service_details.duration,
-                "price": price,
-                "relevance": relevance
-            })
-        
-        if not services_with_relevance:
-            return {
-                "success": False,
-                "error": f"Не удалось получить детали услуг мастера {master_name_result}"
-            }
-        
-        # 8. Сортируем услуги по релевантности (от большей к меньшей) и берем топ-10
-        services_with_relevance.sort(key=lambda x: x["relevance"], reverse=True)
-        top_services = services_with_relevance[:10]
-        
-        # Убираем поле relevance из результата
-        services = [
-            {
-                "id": s["id"],
-                "title": s["title"],
-                "duration": s["duration"],
-                "price": s["price"]
-            }
-            for s in top_services
-        ]
+            if not services_list:
+                return {
+                    "success": False,
+                    "error": f"Не удалось получить детали услуг мастера {master_name_result}"
+                }
+            
+            # 8. Используем умный поиск для нахождения наиболее релевантных услуг
+            # Минимальная релевантность 30% для услуг мастера (ниже, чем для общего поиска)
+            service_matches = _service_matcher.find_best_matches(
+                services_list,
+                service_name,
+                min_relevance=30.0,
+                max_results=15
+            )
+            
+            # Извлекаем услуги из результатов поиска (уже отсортированы по релевантности)
+            services = [service for service, relevance in service_matches]
+            
+            # Если не нашли услуги с умным поиском, но мастер найден - возвращаем все услуги мастера
+            # (возможно, запрос был слишком общим или услуга называется по-другому)
+            if not services and services_list:
+                services = services_list[:15]  # Берем первые 15 услуг мастера
         
         # 9. Формируем успешный ответ
         return {

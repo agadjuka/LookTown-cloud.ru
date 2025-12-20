@@ -10,6 +10,7 @@ from ..common.yclients_service import YclientsService
 from ..common.services_data_loader import _data_loader
 from .logic import find_service_logic, find_master_by_service_logic
 from .category_matcher import find_category_by_query
+from .category_enricher import enrich_services_with_categories
 
 try:
     from ....services.logger_service import logger
@@ -184,11 +185,25 @@ class FindService(BaseModel):
                 if not services:
                     return f"Мастер {master_name_result} найден, но у него нет доступных услуг."
                 
-                # Форматируем результат как нумерованный список (топ-10 самых релевантных)
+                # Ограничиваем до 15 услуг
+                services = services[:15]
+                
+                # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
+                services = asyncio.run(
+                    enrich_services_with_categories(yclients_service, services)
+                )
+                
+                # Форматируем результат как нумерованный список (максимум 15 самых релевантных)
                 result_lines = []
                 
                 for idx, service in enumerate(services, start=1):
                     title = service.get('title', 'Неизвестно')
+                    category_title = service.get('category_title')
+                    
+                    # Если есть название категории, добавляем его к названию услуги
+                    if category_title:
+                        title = f"{title} ({category_title})"
+                    
                     service_id = service.get('id', 'Не указан')
                     price = service.get('price', 'Не указана')
                     
@@ -217,11 +232,25 @@ class FindService(BaseModel):
             if not services:
                 return f"Услуги с названием '{self.service_name}' не найдены"
             
+            # Ограничиваем до 15 услуг
+            services = services[:15]
+            
+            # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
+            services = asyncio.run(
+                enrich_services_with_categories(yclients_service, services)
+            )
+            
             # Форматируем результат
             result_lines = []
             
             for idx, service in enumerate(services, start=1):
                 title = service.get('title', 'Неизвестно')
+                category_title = service.get('category_title')
+                
+                # Если есть название категории, добавляем его к названию услуги
+                if category_title:
+                    title = f"{title} ({category_title})"
+                
                 service_id = service.get('id', 'Не указан')
                 price = service.get('price', 'Не указана')
                 

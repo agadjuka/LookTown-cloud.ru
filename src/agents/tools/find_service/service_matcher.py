@@ -196,24 +196,43 @@ class ServiceMatcher:
             penalty = (len(missing_keywords) / len(query_keywords_set)) * 50.0
             base_relevance = max(0.0, base_relevance - penalty)
         
+        # Приоритет: если запрос содержится в названии и все ключевые слова найдены
         if query_in_title and all_keywords_found:
             # Запрос содержится в названии и все ключевые слова найдены - высокий приоритет
             base_relevance = max(base_relevance, 85.0)
         elif query_in_title:
-            # Запрос содержится в названии, но не все ключевые слова - средний приоритет
-            base_relevance = max(base_relevance, 50.0)
+            # Запрос содержится в названии - это важный признак релевантности
+            # Даже если не все ключевые слова найдены, это все равно релевантно
+            if all_keywords_found:
+                base_relevance = max(base_relevance, 80.0)
+            else:
+                # Запрос в названии, но не все слова - средний приоритет, но не отбрасываем
+                base_relevance = max(base_relevance, 50.0)
         
         if title_in_query:
             # Название содержится в запросе
             base_relevance = max(base_relevance, 40.0)
         
+        # Для коротких запросов (одно слово) делаем более мягкую проверку
+        is_single_word_query = len(query_keywords_set) == 1
+        
+        # Если запрос содержится в названии и все ключевые слова найдены - это точно релевантно
+        if query_in_title and all_keywords_found:
+            return min(base_relevance, 100.0)
+        
         # Фильтрация: если релевантность низкая и не все ключевые слова найдены - отбрасываем
         if base_relevance < 50.0:
             if not matched_keywords:
                 return 0.0
-            # Если есть совпадения, но релевантность низкая - возвращаем пропорционально
-            if keyword_match_ratio < 0.5:
-                return 0.0
+            # Для однословных запросов делаем более мягкую проверку
+            if is_single_word_query:
+                # Если ключевое слово найдено, но релевантность низкая - все равно возвращаем
+                if matched_keywords:
+                    return max(base_relevance, 30.0)  # Минимум 30% если слово найдено
+            else:
+                # Для многословных запросов - более строгая проверка
+                if keyword_match_ratio < 0.5:
+                    return 0.0
         
         return min(base_relevance, 100.0)
     
@@ -249,6 +268,87 @@ class ServiceMatcher:
             
             if relevance >= min_relevance:
                 results.append((service, relevance))
+        
+        # Сортируем по релевантности (от большей к меньшей)
+        results.sort(key=lambda x: x[1], reverse=True)
+        
+        # Возвращаем топ результатов
+        return results[:max_results]
+    
+    def calculate_name_relevance(self, name: str, search_query: str) -> float:
+        """
+        Вычисляет релевантность имени к поисковому запросу
+        
+        Args:
+            name: Имя для проверки
+            search_query: Поисковый запрос
+            
+        Returns:
+            Оценка релевантности (0-100)
+        """
+        if not name or not search_query:
+            return 0.0
+        
+        # Нормализуем тексты
+        normalized_name = self._normalize_text(name)
+        normalized_query = self._normalize_text(search_query)
+        
+        # Точное совпадение
+        if normalized_name == normalized_query:
+            return 100.0
+        
+        # Нечеткое сравнение
+        ratio = fuzz.ratio(normalized_name, normalized_query)
+        partial_ratio = fuzz.partial_ratio(normalized_name, normalized_query)
+        token_ratio = fuzz.token_sort_ratio(normalized_name, normalized_query)
+        
+        # Проверяем, содержится ли запрос в имени или наоборот
+        query_in_name = normalized_query in normalized_name
+        name_in_query = normalized_name in normalized_query
+        
+        # Базовая релевантность
+        base_relevance = max(ratio, partial_ratio, token_ratio)
+        
+        # Бонусы за вхождение
+        if query_in_name:
+            base_relevance = max(base_relevance, 80.0)
+        
+        if name_in_query:
+            base_relevance = max(base_relevance, 70.0)
+        
+        return min(base_relevance, 100.0)
+    
+    def find_best_masters(
+        self,
+        masters: List[Dict],
+        master_name: str,
+        min_relevance: float = 30.0,
+        max_results: int = 15
+    ) -> List[Tuple[Dict, float]]:
+        """
+        Находит наиболее релевантных мастеров по имени
+        
+        Args:
+            masters: Список мастеров (словари с ключом 'name')
+            master_name: Имя мастера для поиска
+            min_relevance: Минимальная релевантность для включения в результат
+            max_results: Максимальное количество результатов
+            
+        Returns:
+            Список кортежей (мастер, релевантность), отсортированный по убыванию релевантности
+        """
+        results = []
+        
+        for master in masters:
+            master_name_field = master.get('name', '')
+            if not master_name_field or master_name_field == "Лист ожидания":
+                continue
+            
+            # Вычисляем релевантность имени
+            relevance = self.calculate_name_relevance(master_name_field, master_name)
+            
+            if relevance >= min_relevance:
+                results.append((master, relevance))
         
         # Сортируем по релевантности (от большей к меньшей)
         results.sort(key=lambda x: x[1], reverse=True)
