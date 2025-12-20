@@ -127,6 +127,14 @@ class ResponsesOrchestrator:
                 )
             except Exception as e:
                 logger.error(f"Ошибка при запросе к API на итерации {iteration}: {e}", exc_info=True)
+                # Если это первая итерация и произошла ошибка, возвращаем сообщение об ошибке
+                if iteration == 1:
+                    error_message = "Извините, произошла техническая ошибка. Пожалуйста, попробуйте еще раз через несколько секунд."
+                    return {
+                        "reply": error_message,
+                        "tool_calls": tool_calls_info,
+                        "raw_response": None,
+                    }
                 break
             
             message = response.choices[0].message
@@ -234,6 +242,11 @@ class ResponsesOrchestrator:
         
         if iteration >= max_iterations:
             logger.warning(f"Достигнут лимит итераций ({max_iterations}). Прекращаем цикл.")
+        
+        # Если ответ пустой, возвращаем сообщение об ошибке
+        if not reply_text or not reply_text.strip():
+            logger.warning("Получен пустой ответ от API")
+            reply_text = "Извините, не удалось получить ответ. Пожалуйста, попробуйте еще раз."
         
         return {
             "reply": reply_text,

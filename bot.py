@@ -113,6 +113,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "manager_alert": escalation_result.get("manager_alert")
         }
     
+    # Проверяем, что ответ не пустой
+    if not user_message_text or not user_message_text.strip():
+        logger.warning(f"Попытка отправить пустое сообщение (chat_id={chat_id})")
+        user_message_text = "Извините, произошла ошибка при обработке вашего запроса. Пожалуйста, попробуйте еще раз."
+    
     # Нормализуем даты и время в ответе
     user_message_text = normalize_dates_in_text(user_message_text)
     user_message_text = normalize_times_in_text(user_message_text)

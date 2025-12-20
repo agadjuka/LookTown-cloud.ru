@@ -175,6 +175,9 @@ class ResponsesToolsRegistry:
                 if isinstance(param_type, list):
                     # Для Optional типов берём первый не-None тип
                     param_type = next((t for t in param_type if t != "null"), "string")
+                elif param_type is None:
+                    # Если тип не указан, используем string по умолчанию
+                    param_type = "string"
                 
                 # Маппинг типов Python -> JSON Schema
                 type_mapping = {
@@ -187,6 +190,11 @@ class ResponsesToolsRegistry:
                 }
                 
                 json_type = type_mapping.get(param_type, "string")
+                
+                # Валидация: убеждаемся, что тип валидный для OpenAI API
+                if json_type not in type_mapping.values():
+                    logger.warning(f"Неизвестный тип параметра {prop_name}: {param_type}, используем string")
+                    json_type = "string"
                 
                 # Формируем описание параметра
                 param_description = prop_info.get("description", "")

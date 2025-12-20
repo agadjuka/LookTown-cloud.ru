@@ -114,6 +114,14 @@ class ResponsesAPIClient:
             
             if tools:
                 params["tools"] = tools
+                logger.debug(f"Tools count: {len(tools)}")
+                # Логируем схемы инструментов для диагностики
+                try:
+                    import json
+                    tools_json = json.dumps(tools, ensure_ascii=False, indent=2)
+                    logger.debug(f"Tools schemas (first 1000 chars): {tools_json[:1000]}")
+                except Exception as e:
+                    logger.warning(f"Не удалось сериализовать схемы инструментов: {e}")
             
             logger.debug(f"Sending request to OpenAI: {len(messages)} messages")
             logger.debug(f"Instructions length: {len(normalized_instructions)} chars")
