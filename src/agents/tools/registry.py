@@ -23,7 +23,6 @@ class ToolsRegistry:
             # Импортируем все инструменты напрямую из tool.py, минуя __init__.py
             # чтобы избежать циклических импортов через src.agents.__init__.py
             from .get_categories.tool import GetCategories
-            from .get_services.tool import GetServices
             from .find_slots.tool import FindSlots
             from .create_booking.tool import CreateBooking
             from .view_service.tool import ViewService
@@ -39,7 +38,6 @@ class ToolsRegistry:
             # Регистрируем все инструменты
             tools_list = [
                 GetCategories,
-                GetServices,
                 FindSlots,
                 CreateBooking,
                 ViewService,

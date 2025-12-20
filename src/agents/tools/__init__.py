@@ -2,7 +2,6 @@
 Инструменты для работы с каталогом услуг и бронированием
 """
 from .get_categories import GetCategories
-from .get_services import GetServices
 from .find_slots import FindSlots
 from .create_booking import CreateBooking
 from .view_service import ViewService
@@ -17,7 +16,6 @@ from .masters import Masters
 __all__ = [
     # Инструменты каталога услуг
     "GetCategories",
-    "GetServices",
     "ViewService",
     # Инструменты бронирования
     "FindSlots",
