@@ -56,7 +56,7 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
 
 ВАЖНО:
 - Верни ТОЛЬКО те поля, которые изменились.
-- Если меняется услуга, ты ОБЯЗАН сбросить `service_id` и `slot_time` в null.
+- Если меняется услуга, ты ОБЯЗАН сбросить `service_id` и `slot_time` в null. Но если меняется услуга на ту, ID которой тебе известно - отправляй правильный ID.
 
 Примеры:
 - "Хочу педикюр" (при текущем маникюре) -> {{"service_name": "педикюр", "service_id": null, "slot_time": null}}
