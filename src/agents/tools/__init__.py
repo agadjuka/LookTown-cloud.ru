@@ -6,7 +6,6 @@ from .get_services import GetServices
 from .find_slots import FindSlots
 from .create_booking import CreateBooking
 from .view_service import ViewService
-from .find_master_by_service import FindMasterByService
 from .find_service import FindService
 from .get_client_records import GetClientRecords
 from .cancel_booking import CancelBooking
@@ -23,7 +22,6 @@ __all__ = [
     # Инструменты бронирования
     "FindSlots",
     "CreateBooking",
-    "FindMasterByService",
     "FindService",
     # Инструменты для работы с записями клиентов
     "GetClientRecords",

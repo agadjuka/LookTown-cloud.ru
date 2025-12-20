@@ -16,4 +16,5 @@ class ConversationState(TypedDict):
     manager_alert: Optional[str]                   # Сообщение для менеджера (если нужно)
     agent_name: Optional[str]                      # Имя агента, который дал ответ
     used_tools: Optional[list]                    # Список использованных инструментов
+    tool_results: Optional[List[Dict[str, Any]]]  # Полная информация о результатах инструментов
 

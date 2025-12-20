@@ -29,4 +29,4 @@ class ResponsesAPIConfig:
         """Для совместимости, если где-то используется"""
         return "default"
 
-# "ai-sage/GigaChat3-10B-A1.8B"
+# "ai-sage/GigaChat3-10B-A1.8B" "openai/gpt-oss-120b"

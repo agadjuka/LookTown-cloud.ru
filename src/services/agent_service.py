@@ -176,7 +176,41 @@ class AgentService:
                 answer
             )
         
-        # Сохраняем информацию о tool-вызовах, если были
+        # Сохраняем результаты инструментов в БД, если были
+        tool_results = result_state.get("tool_results", [])
+        if tool_results:
+            for tool_result in tool_results:
+                try:
+                    # Формируем содержимое для сохранения
+                    tool_name = tool_result.get("name", "Unknown")
+                    tool_args = tool_result.get("args", {})
+                    tool_result_value = tool_result.get("result", "")
+                    
+                    # Форматируем результат
+                    if isinstance(tool_result_value, (dict, list)):
+                        result_str = json.dumps(tool_result_value, ensure_ascii=False, indent=2)
+                    else:
+                        result_str = str(tool_result_value)
+                    
+                    # Формируем сообщение с информацией об инструменте
+                    tool_content = f"Tool: {tool_name}\n"
+                    if tool_args:
+                        args_str = json.dumps(tool_args, ensure_ascii=False, indent=2)
+                        tool_content += f"Args: {args_str}\n"
+                    tool_content += f"Result: {result_str}"
+                    
+                    # Сохраняем с ролью "tool"
+                    await asyncio.to_thread(
+                        conversation_repo.append_message,
+                        conversation_id,
+                        "tool",
+                        tool_content
+                    )
+                    logger.debug(f"Сохранен результат инструмента {tool_name} в БД")
+                except Exception as e:
+                    logger.warning(f"Ошибка при сохранении результата инструмента: {e}")
+        
+        # Сохраняем информацию о tool-вызовах, если были (для обратной совместимости)
         used_tools = result_state.get("used_tools", [])
         if used_tools:
             tools_info = f"Tools used: {', '.join(used_tools)}"

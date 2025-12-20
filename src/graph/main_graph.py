@@ -99,12 +99,15 @@ class MainGraph:
             escalation_result = self.stage_detector._call_manager_result
             logger.info(f"CallManager был вызван в StageDetectorAgent, chat_id: {chat_id}")
             
+            # Получаем полную информацию о tool_calls (если есть)
+            tool_results = self.stage_detector._last_tool_calls if hasattr(self.stage_detector, '_last_tool_calls') and self.stage_detector._last_tool_calls else []
+            
             return {
                 "answer": escalation_result.get("user_message"),
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": "StageDetectorAgent",
                 "used_tools": ["CallManager"],
-
+                "tool_results": tool_results,
             }
         
         return {
@@ -150,7 +153,9 @@ class MainGraph:
         Returns:
             Обновленное состояние графа
         """
-        used_tools = [tool["name"] for tool in agent._last_tool_calls] if hasattr(agent, '_last_tool_calls') and agent._last_tool_calls else []
+        # Получаем полную информацию о tool_calls (не только имена)
+        tool_results = agent._last_tool_calls if hasattr(agent, '_last_tool_calls') and agent._last_tool_calls else []
+        used_tools = [tool["name"] for tool in tool_results] if tool_results else []
         
         # Агент теперь возвращает просто строку (ответ)
         answer_text = answer
@@ -167,7 +172,7 @@ class MainGraph:
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": agent_name,
                 "used_tools": used_tools,
-
+                "tool_results": tool_results,
             }
         
         # Обычный ответ агента
@@ -177,7 +182,7 @@ class MainGraph:
             "answer": answer,
             "agent_name": agent_name,
             "used_tools": used_tools,
-
+            "tool_results": tool_results,
         }
     
     def _handle_booking(self, state: ConversationState) -> ConversationState:

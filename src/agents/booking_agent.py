@@ -103,6 +103,7 @@ class BookingAgent(BaseAgent):
             answer = updated_conversation_state.get("answer", "")
             manager_alert = updated_conversation_state.get("manager_alert")
             used_tools = updated_conversation_state.get("used_tools")
+            tool_results = updated_conversation_state.get("tool_results")
             
             # Создаем обновленное ConversationState
             updated_state: ConversationState = {
@@ -111,6 +112,7 @@ class BookingAgent(BaseAgent):
                 "answer": answer,
                 "manager_alert": manager_alert,
                 "used_tools": used_tools,
+                "tool_results": tool_results,
                 "agent_name": "BookingAgent"
             }
             

@@ -134,7 +134,8 @@ def finalizer_node(state: ConversationState) -> ConversationState:
             return {
                 "answer": result.get("reply", ""),
                 "manager_alert": result.get("manager_alert"),
-                "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else []
+                "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
+                "tool_results": tool_calls if tool_calls else []
             }
         
         # Проверяем, был ли вызван CreateBooking
@@ -161,6 +162,7 @@ def finalizer_node(state: ConversationState) -> ConversationState:
             return {
                 "answer": reply,
                 "used_tools": used_tools,
+                "tool_results": tool_calls if tool_calls else [],
                 "extracted_info": updated_extracted_info
             }
         else:
@@ -171,7 +173,8 @@ def finalizer_node(state: ConversationState) -> ConversationState:
             
             return {
                 "answer": reply,
-                "used_tools": used_tools
+                "used_tools": used_tools,
+                "tool_results": tool_calls if tool_calls else []
             }
         
     except Exception as e:

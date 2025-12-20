@@ -27,7 +27,6 @@ class ToolsRegistry:
             from .find_slots.tool import FindSlots
             from .create_booking.tool import CreateBooking
             from .view_service.tool import ViewService
-            from .find_master_by_service.tool import FindMasterByService
             from .get_client_records.tool import GetClientRecords
             from .cancel_booking.tool import CancelBooking
             from .reschedule_booking.tool import RescheduleBooking
@@ -44,7 +43,6 @@ class ToolsRegistry:
                 FindSlots,
                 CreateBooking,
                 ViewService,
-                FindMasterByService,
                 GetClientRecords,
                 CancelBooking,
                 RescheduleBooking,
