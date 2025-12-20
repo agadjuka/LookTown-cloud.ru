@@ -53,10 +53,50 @@ class ResponsesOrchestrator:
                 # Пропускаем system сообщения (например, "Tools used: ...")
                 if msg.get("role") == "system":
                     continue
-                messages.append({
+                
+                # Нормализуем сообщение для API
+                normalized_msg = {
                     "role": msg.get("role", "user"),
-                    "content": msg.get("content", "")
-                })
+                    "content": msg.get("content") or ""  # content должен быть строкой, не None
+                }
+                
+                # Если есть tool_calls, добавляем их (только если это assistant сообщение)
+                if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                    # Проверяем, что tool_calls в правильном формате
+                    tool_calls = msg.get("tool_calls")
+                    if isinstance(tool_calls, list):
+                        # Если это уже список словарей, используем как есть
+                        # Если это объекты SDK, нужно сериализовать
+                        try:
+                            # Пытаемся проверить, что это уже словари
+                            if tool_calls and isinstance(tool_calls[0], dict):
+                                normalized_msg["tool_calls"] = tool_calls
+                            else:
+                                # Сериализуем объекты SDK в словари
+                                normalized_msg["tool_calls"] = [
+                                    {
+                                        "id": tc.id if hasattr(tc, 'id') else tc.get("id"),
+                                        "type": "function",
+                                        "function": {
+                                            "name": tc.function.name if hasattr(tc, 'function') else tc.get("function", {}).get("name"),
+                                            "arguments": tc.function.arguments if hasattr(tc, 'function') else tc.get("function", {}).get("arguments")
+                                        }
+                                    }
+                                    for tc in tool_calls
+                                ]
+                        except Exception as e:
+                            logger.warning(f"Ошибка при обработке tool_calls из истории: {e}")
+                            # Пропускаем tool_calls, если не удалось обработать
+                
+                # Если это tool сообщение, добавляем tool_call_id
+                if msg.get("role") == "tool":
+                    if "tool_call_id" in msg:
+                        normalized_msg["tool_call_id"] = msg["tool_call_id"]
+                    else:
+                        # Пропускаем tool сообщения без tool_call_id
+                        continue
+                
+                messages.append(normalized_msg)
         
         # Если история пустая или последнее сообщение не совпадает с текущим,
         # добавляем текущее сообщение
@@ -92,13 +132,25 @@ class ResponsesOrchestrator:
             message = response.choices[0].message
             
             # Добавляем ответ ассистента в историю сообщений
-            # Важно: для OpenAI нужно добавлять объект message целиком или корректный словарь
+            # Важно: правильно сериализуем tool_calls из объекта SDK в словари
             assistant_msg = {
                 "role": "assistant",
-                "content": message.content
+                "content": message.content or ""  # content должен быть строкой, не None
             }
+            
+            # Правильно сериализуем tool_calls из объекта SDK в формат словарей
             if message.tool_calls:
-                assistant_msg["tool_calls"] = message.tool_calls
+                assistant_msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments
+                        }
+                    }
+                    for tc in message.tool_calls
+                ]
             
             messages.append(assistant_msg)
             
