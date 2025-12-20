@@ -3,7 +3,7 @@
 """
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ..state import BookingSubState, DialogStep
+from ..state import BookingSubState
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
 from ....services.responses_api.config import ResponsesAPIConfig

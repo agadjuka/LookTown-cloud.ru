@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, List
 from .base_agent import BaseAgent
 from ..services.langgraph_service import LangGraphService
 from ..graph.conversation_state import ConversationState
-from ..graph.booking.state import BookingSubState, DialogStep
+from ..graph.booking.state import BookingSubState
 from ..graph.booking.graph import create_booking_graph
 from ..services.logger_service import logger
 
@@ -63,7 +63,6 @@ class BookingAgent(BaseAgent):
                 "slot_time": booking_data.get("slot_time"),
                 "client_name": booking_data.get("client_name"),
                 "client_phone": booking_data.get("client_phone"),
-                "dialog_step": booking_data.get("dialog_step", DialogStep.SERVICE.value),
                 "is_finalized": booking_data.get("is_finalized", False)
             }
             

@@ -2,15 +2,6 @@
 Состояние для подграфа бронирования (Booking Subgraph)
 """
 from typing import TypedDict, Optional
-from enum import Enum
-
-
-class DialogStep(str, Enum):
-    """Шаги диалога бронирования"""
-    SERVICE = "service"
-    SLOT = "slot"
-    CONTACTS = "contacts"
-    CONFIRMATION = "confirmation"
 
 
 class BookingSubState(TypedDict, total=False):
@@ -22,5 +13,4 @@ class BookingSubState(TypedDict, total=False):
     slot_time: Optional[str]               # Время слота (формат YYYY-MM-DD HH:MM)
     client_name: Optional[str]              # Имя клиента
     client_phone: Optional[str]            # Телефон клиента
-    dialog_step: str                       # Текущий шаг диалога (из DialogStep)
     is_finalized: Optional[bool]           # Флаг завершения бронирования

@@ -136,12 +136,16 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     """
     Функция роутинга для выбора следующего узла в графе бронирования
     
+    Data-Driven Routing: роутинг основан только на наличии данных в состоянии.
+    Если Analyzer сбросит service_id в None (при смене темы), роутер автоматически
+    вернет "service_manager", игнорируя предыдущий этап.
+    
     Логика (строгий порядок проверок):
-    1. Если is_finalized is True -> Возвращаем END (процесс завершен)
-    2. Если service_id is None -> Возвращаем "service_manager"
-    3. Если slot_time is None -> Возвращаем "slot_manager"
-    4. Если client_name is None OR client_phone is None -> Возвращаем "contact_collector"
-    5. Иначе (все данные есть) -> Возвращаем "finalizer"
+    1. Если is_finalized -> END (процесс завершен)
+    2. Если service_id is None -> service_manager (даже если есть service_name, ID важнее)
+    3. Если slot_time is None -> slot_manager
+    4. Если нет контактов (client_name или client_phone) -> contact_collector
+    5. Иначе (все данные есть) -> finalizer
     
     Args:
         state: Состояние графа (словарь с ключом 'booking')
@@ -151,29 +155,28 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     """
     booking_state = state.get("booking", {})
     
-    # Проверка 1: Если is_finalized is True -> END
+    # 1. Если финализировано — выход
     if booking_state.get("is_finalized"):
         logger.info("Бронирование финализировано, завершаем граф")
         return END
     
-    # Проверка 2: Если service_id is None -> service_manager
+    # 2. Если нет ID услуги — идем выбирать услугу (даже если есть название, ID важнее)
+    # Используем явную проверку на None
     if booking_state.get("service_id") is None:
         logger.info("service_id отсутствует, маршрутизируем в service_manager")
         return "service_manager"
     
-    # Проверка 3: Если slot_time is None -> slot_manager
+    # 3. Если нет времени слота — идем искать слоты
     if booking_state.get("slot_time") is None:
         logger.info("slot_time отсутствует, маршрутизируем в slot_manager")
         return "slot_manager"
     
-    # Проверка 4: Если client_name is None OR client_phone is None -> contact_collector
-    client_name = booking_state.get("client_name")
-    client_phone = booking_state.get("client_phone")
-    if client_name is None or client_phone is None:
+    # 4. Если нет контактов — собираем контакты
+    if not booking_state.get("client_name") or not booking_state.get("client_phone"):
         logger.info("Контактные данные неполные, маршрутизируем в contact_collector")
         return "contact_collector"
     
-    # Проверка 5: Все данные есть -> finalizer
+    # 5. Иначе — финализируем
     logger.info("Все данные собраны, маршрутизируем в finalizer")
     return "finalizer"
 
