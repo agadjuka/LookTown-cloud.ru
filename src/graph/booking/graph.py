@@ -65,7 +65,7 @@ def _conversation_state_to_booking_substate(
     updated_state = dict(current_booking_state)
     
     # Критические поля, которые могут быть явно сброшены в None
-    critical_fields = {"service_id", "slot_time", "master_id", "master_name"}
+    critical_fields = {"service_id", "slot_time", "master_id", "master_name", "slot_time_verified"}
     
     for key, value in booking_data.items():
         # Для критических полей обновляем даже если значение None (явный сброс)
@@ -140,6 +140,39 @@ contact_collector_adapter = _create_booking_state_adapter(contact_collector_node
 finalizer_adapter = _create_booking_state_adapter(finalizer_node)
 
 
+def route_after_slot_manager(state: Dict[str, Any]) -> Literal["contact_collector", "finalizer", END]:
+    """
+    Функция роутинга после slot_manager
+    
+    Логика:
+    - Если slot_time_verified = True → роутим дальше (contact_collector или finalizer)
+    - Иначе → END (либо предложили слоты, либо время недоступно - уже написали сообщение)
+    
+    Args:
+        state: Состояние графа (словарь с ключом 'booking')
+        
+    Returns:
+        "contact_collector", "finalizer" или END
+    """
+    booking_state = state.get("booking", {})
+    slot_time_verified = booking_state.get("slot_time_verified", False)
+    
+    if slot_time_verified:
+        # Время проверено и доступно - роутим дальше по состоянию
+        logger.info("slot_time_verified=True, роутим дальше по состоянию")
+        
+        # Проверяем контакты
+        if not booking_state.get("client_name") or not booking_state.get("client_phone"):
+            logger.info("Контактные данные неполные, маршрутизируем в contact_collector")
+            return "contact_collector"
+        else:
+            logger.info("Все данные собраны, маршрутизируем в finalizer")
+            return "finalizer"
+    else:
+        logger.info("slot_manager завершил работу (предложил слоты или время недоступно), завершаем граф")
+        return END
+
+
 def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_manager", "contact_collector", "finalizer", END]:
     """
     Функция роутинга для выбора следующего узла в графе бронирования
@@ -151,9 +184,10 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     Логика (строгий порядок проверок):
     1. Если is_finalized -> END (процесс завершен)
     2. Если service_id is None -> service_manager (даже если есть service_name, ID важнее)
-    3. Если slot_time is None -> slot_manager
-    4. Если нет контактов (client_name или client_phone) -> contact_collector
-    5. Иначе (все данные есть) -> finalizer
+    3. Если slot_time is None -> slot_manager (поиск слотов)
+    4. Если slot_time есть, но slot_time_verified is False/None -> slot_manager (проверка доступности)
+    5. Если нет контактов (client_name или client_phone) -> contact_collector
+    6. Иначе (все данные есть) -> finalizer
     
     Args:
         state: Состояние графа (словарь с ключом 'booking')
@@ -178,9 +212,17 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
         logger.info(f"service_id отсутствует (значение: {service_id}), маршрутизируем в service_manager")
         return "service_manager"
     
-    # 3. Если нет времени слота — идем искать слоты
-    if booking_state.get("slot_time") is None:
+    # 3. Проверка времени слота
+    slot_time = booking_state.get("slot_time")
+    slot_time_verified = booking_state.get("slot_time_verified", False)
+    
+    if slot_time is None:
+        # Времени нет — идем искать слоты
         logger.info("slot_time отсутствует, маршрутизируем в slot_manager")
+        return "slot_manager"
+    elif not slot_time_verified:
+        # Время указано, но не проверено — проверяем доступность
+        logger.info(f"slot_time={slot_time} указан, но не проверен, маршрутизируем в slot_manager для проверки")
         return "slot_manager"
     
     # 4. Если нет контактов — собираем контакты
@@ -188,7 +230,7 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
         logger.info("Контактные данные неполные, маршрутизируем в contact_collector")
         return "contact_collector"
     
-    # 5. Иначе — финализируем
+    # 5. Иначе — финализируем (slot_time проверен и доступен)
     logger.info("Все данные собраны, маршрутизируем в finalizer")
     return "finalizer"
 
@@ -219,10 +261,10 @@ def create_booking_graph() -> StateGraph:
     # Добавляем ребра
     workflow.add_edge(START, "analyzer")
     workflow.add_conditional_edges("analyzer", route_booking)
-    workflow.add_edge("service_manager", END)
-    workflow.add_edge("slot_manager", END)
-    workflow.add_edge("contact_collector", END)
-    workflow.add_edge("finalizer", END)
+    workflow.add_edge("service_manager", END)  # После service_manager ждем ответа клиента
+    workflow.add_conditional_edges("slot_manager", route_after_slot_manager)  # Условный роутинг после slot_manager
+    workflow.add_edge("contact_collector", END)  # После contact_collector ждем ответа клиента
+    workflow.add_edge("finalizer", END)  # Только finalizer завершает граф
     
     # Компилируем граф
     compiled_graph = workflow.compile()

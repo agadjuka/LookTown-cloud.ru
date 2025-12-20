@@ -224,8 +224,13 @@ def _merge_booking_state(
         # Жесткий сброс всего, что связано с услугой
         current_details["service_id"] = None
         current_details["slot_time"] = None
+        current_details["slot_time_verified"] = None
         current_details["master_id"] = None
         current_details.pop("master_name", None)  # Удаляем, если есть
+    
+    # Если slot_time сбрасывается явно, сбрасываем и slot_time_verified
+    if "slot_time" in extracted_data and extracted_data["slot_time"] is None:
+        current_details["slot_time_verified"] = None
     
     # 2. Обычное обновление остальных полей
     for key, value in extracted_data.items():

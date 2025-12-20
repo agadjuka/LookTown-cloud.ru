@@ -1,6 +1,8 @@
 """
 Узел менеджера слотов для предложения доступных временных слотов в процессе бронирования
 """
+import asyncio
+from datetime import datetime
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
 from ..state import BookingSubState
@@ -9,22 +11,25 @@ from ....services.responses_api.tools_registry import ResponsesToolsRegistry
 from ....services.responses_api.config import ResponsesAPIConfig
 from ....services.logger_service import logger
 
-# Импортируем инструмент
+# Импортируем инструмент и логику
 from ....agents.tools.find_slots.tool import FindSlots
+from ....agents.tools.find_slots.logic import find_slots_by_period
+from ....agents.tools.common.yclients_service import YclientsService
 
 
 def slot_manager_node(state: ConversationState) -> ConversationState:
     """
     Узел менеджера слотов для предложения доступных временных слотов
     
-    Этот узел запускается, когда service_id уже есть, но slot_time еще не выбран.
-    Использует инструмент FindSlots для поиска доступных слотов и предлагает их клиенту.
+    Этот узел запускается в двух случаях:
+    1. Когда service_id есть, но slot_time еще не выбран - ищет и предлагает слоты
+    2. Когда slot_time указан, но не проверен - проверяет доступность времени
     
     Args:
         state: Текущее состояние графа диалога
         
     Returns:
-        Обновленное состояние с ответом в поле answer
+        Обновленное состояние с ответом в поле answer (или пустым, если время проверено)
     """
     logger.info("Запуск узла slot_manager")
     
@@ -40,12 +45,263 @@ def slot_manager_node(state: ConversationState) -> ConversationState:
             "answer": "Извините, произошла ошибка. Пожалуйста, начните бронирование заново."
         }
     
+    # Получаем slot_time и проверяем, нужно ли его проверить
+    slot_time = booking_state.get("slot_time")
+    slot_time_verified = booking_state.get("slot_time_verified", False)
+    
+    # Если slot_time указан, но не проверен - проверяем его доступность
+    if slot_time and not slot_time_verified:
+        logger.info(f"Проверка доступности указанного времени: {slot_time}")
+        return _verify_slot_time_availability(state, booking_state, service_id, slot_time)
+    
+    # Иначе - обычная логика: ищем и предлагаем слоты
+    return _find_and_offer_slots(state, booking_state, service_id)
+
+
+def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str:
+    """
+    Извлекает пожелания по времени из slot_time или сообщения пользователя
+    
+    Args:
+        slot_time: Конкретное время слота (если есть)
+        user_message: Сообщение пользователя
+        
+    Returns:
+        Строка с описанием пожеланий по времени для промпта
+    """
+    if slot_time:
+        # Если есть конкретное время, преобразуем его в пожелание
+        # Формат slot_time: "YYYY-MM-DD HH:MM"
+        try:
+            from datetime import datetime
+            dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+            date_str = dt.strftime("%Y-%m-%d")
+            time_str = dt.strftime("%H:%M")
+            return f"Конкретная дата и время: {date_str} в {time_str}"
+        except:
+            return f"Конкретное время: {slot_time}"
+    
+    # Ищем пожелания в сообщении пользователя
+    message_lower = user_message.lower()
+    
+    # Проверяем на упоминания времени суток
+    if any(word in message_lower for word in ["утром", "утра", "утреннее"]):
+        return "Утром"
+    elif any(word in message_lower for word in ["днем", "днём", "дневное"]):
+        return "Днем"
+    elif any(word in message_lower for word in ["вечером", "вечер", "вечернее"]):
+        return "Вечером"
+    elif any(word in message_lower for word in ["после", "позже"]):
+        # Пытаемся извлечь время после слова "после"
+        import re
+        after_match = re.search(r'после\s+(\d{1,2}):?(\d{2})?', message_lower)
+        if after_match:
+            hour = after_match.group(1)
+            minute = after_match.group(2) or "00"
+            return f"После {hour}:{minute}"
+    elif any(word in message_lower for word in ["до", "раньше"]):
+        # Пытаемся извлечь время после слова "до"
+        import re
+        before_match = re.search(r'до\s+(\d{1,2}):?(\d{2})?', message_lower)
+        if before_match:
+            hour = before_match.group(1)
+            minute = before_match.group(2) or "00"
+            return f"До {hour}:{minute}"
+    
+    # Проверяем на упоминания дат
+    if any(word in message_lower for word in ["завтра", "tomorrow"]):
+        return "Завтра"
+    elif any(word in message_lower for word in ["послезавтра"]):
+        return "Послезавтра"
+    elif any(word in message_lower for word in ["сегодня", "today"]):
+        return "Сегодня"
+    
+    return ""
+
+
+def _verify_slot_time_availability(
+    state: ConversationState,
+    booking_state: Dict[str, Any],
+    service_id: int,
+    slot_time: str
+) -> ConversationState:
+    """
+    Проверяет доступность указанного времени слота
+    
+    Args:
+        state: Текущее состояние диалога
+        booking_state: Состояние бронирования
+        service_id: ID услуги
+        slot_time: Время слота в формате "YYYY-MM-DD HH:MM"
+        
+    Returns:
+        Обновленное состояние с результатом проверки
+    """
+    try:
+        # Парсим время
+        try:
+            dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+            date_str = dt.strftime("%Y-%m-%d")
+            time_str = dt.strftime("%H:%M")
+        except ValueError:
+            logger.error(f"Неверный формат slot_time: {slot_time}")
+            # Сбрасываем некорректное время
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time"] = None
+            updated_booking_state["slot_time_verified"] = None
+            return {
+                "extracted_info": {
+                    **state.get("extracted_info", {}),
+                    "booking": updated_booking_state
+                },
+                "answer": "Извините, произошла ошибка с указанным временем. Давайте выберем другое время."
+            }
+        
+        # Получаем параметры мастера
+        master_id = booking_state.get("master_id")
+        master_name = booking_state.get("master_name")
+        
+        # Проверяем доступность через FindSlots
+        try:
+            yclients_service = YclientsService()
+        except ValueError as e:
+            logger.error(f"Ошибка конфигурации YclientsService: {e}")
+            return {
+                "answer": "Извините, произошла ошибка при проверке доступности времени. Попробуйте еще раз."
+            }
+        
+        # Вызываем find_slots_by_period для проверки конкретного времени
+        result = asyncio.run(
+            find_slots_by_period(
+                yclients_service=yclients_service,
+                service_id=service_id,
+                time_period=time_str,  # Конкретное время для проверки
+                master_name=master_name,
+                master_id=master_id,
+                date=date_str
+            )
+        )
+        
+        if result.get('error'):
+            logger.warning(f"Ошибка при проверке доступности времени: {result['error']}")
+            # Если ошибка - сбрасываем время и предлагаем выбрать другое
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time"] = None
+            updated_booking_state["slot_time_verified"] = None
+            return {
+                "extracted_info": {
+                    **state.get("extracted_info", {}),
+                    "booking": updated_booking_state
+                },
+                "answer": f"К сожалению, время {time_str} на {date_str} недоступно. Давайте выберем другое время?"
+            }
+        
+        # Проверяем, есть ли это время в результатах
+        results = result.get('results', [])
+        time_found = False
+        
+        # Преобразуем время в минуты для проверки
+        def time_to_minutes(time_str: str) -> int:
+            parts = time_str.split(':')
+            return int(parts[0]) * 60 + int(parts[1])
+        
+        target_minutes = time_to_minutes(time_str)
+        
+        for day_result in results:
+            if day_result.get('date') == date_str:
+                slots = day_result.get('slots', [])
+                # Проверяем, есть ли нужное время в слотах
+                for slot in slots:
+                    # Слот может быть в формате "HH:MM" или "HH:MM-HH:MM"
+                    if '-' in slot:
+                        # Интервал: проверяем, попадает ли время в интервал
+                        parts = slot.split('-')
+                        start_time = parts[0].strip()
+                        end_time = parts[1].strip() if len(parts) > 1 else start_time
+                        start_minutes = time_to_minutes(start_time)
+                        end_minutes = time_to_minutes(end_time)
+                        # Время доступно, если оно попадает в интервал (включительно начало, исключительно конец)
+                        if start_minutes <= target_minutes < end_minutes:
+                            time_found = True
+                            break
+                    else:
+                        # Отдельное время: точное совпадение
+                        if slot == time_str:
+                            time_found = True
+                            break
+                if time_found:
+                    break
+        
+        if time_found:
+            # Время доступно - устанавливаем флаг и возвращаем пустой answer
+            logger.info(f"Время {slot_time} доступно, устанавливаем slot_time_verified=True")
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time_verified"] = True
+            return {
+                "extracted_info": {
+                    **state.get("extracted_info", {}),
+                    "booking": updated_booking_state
+                },
+                "answer": ""  # Пустой ответ - не пишем клиенту
+            }
+        else:
+            # Время недоступно - сообщаем клиенту и сбрасываем
+            logger.info(f"Время {slot_time} недоступно")
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time"] = None
+            updated_booking_state["slot_time_verified"] = None
+            
+            # Форматируем дату для сообщения
+            try:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+                formatted_date = date_obj.strftime("%d.%m.%Y")
+            except:
+                formatted_date = date_str
+            
+            return {
+                "extracted_info": {
+                    **state.get("extracted_info", {}),
+                    "booking": updated_booking_state
+                },
+                "answer": f"К сожалению, время {time_str} на {formatted_date} недоступно. Давайте выберем другое время."
+            }
+            
+    except Exception as e:
+        logger.error(f"Ошибка при проверке доступности времени: {e}", exc_info=True)
+        # При ошибке сбрасываем время
+        updated_booking_state = booking_state.copy()
+        updated_booking_state["slot_time"] = None
+        updated_booking_state["slot_time_verified"] = None
+        return {
+            "extracted_info": {
+                **state.get("extracted_info", {}),
+                "booking": updated_booking_state
+            },
+            "answer": "Извините, произошла ошибка при проверке доступности времени. Давайте выберем другое время?"
+        }
+
+
+def _find_and_offer_slots(
+    state: ConversationState,
+    booking_state: Dict[str, Any],
+    service_id: int
+) -> ConversationState:
+    """
+    Ищет и предлагает доступные слоты клиенту (обычная логика работы slot_manager)
+    
+    Args:
+        state: Текущее состояние диалога
+        booking_state: Состояние бронирования
+        service_id: ID услуги
+        
+    Returns:
+        Обновленное состояние с ответом и предложенными слотами
+    """
     # Получаем master_id (если есть)
     master_id = booking_state.get("master_id")
     master_name = booking_state.get("master_name")
     
-    # Получаем пожелания по времени
-    # Могут быть в slot_time (если это конкретное время) или в сообщении пользователя
+    # Получаем пожелания по времени из сообщения пользователя
     slot_time = booking_state.get("slot_time")
     user_message = state.get("message", "")
     
@@ -112,67 +368,6 @@ def slot_manager_node(state: ConversationState) -> ConversationState:
         return {
             "answer": "Извините, произошла ошибка при поиске доступного времени. Попробуйте еще раз."
         }
-
-
-def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str:
-    """
-    Извлекает пожелания по времени из slot_time или сообщения пользователя
-    
-    Args:
-        slot_time: Конкретное время слота (если есть)
-        user_message: Сообщение пользователя
-        
-    Returns:
-        Строка с описанием пожеланий по времени для промпта
-    """
-    if slot_time:
-        # Если есть конкретное время, преобразуем его в пожелание
-        # Формат slot_time: "YYYY-MM-DD HH:MM"
-        try:
-            from datetime import datetime
-            dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
-            date_str = dt.strftime("%Y-%m-%d")
-            time_str = dt.strftime("%H:%M")
-            return f"Конкретная дата и время: {date_str} в {time_str}"
-        except:
-            return f"Конкретное время: {slot_time}"
-    
-    # Ищем пожелания в сообщении пользователя
-    message_lower = user_message.lower()
-    
-    # Проверяем на упоминания времени суток
-    if any(word in message_lower for word in ["утром", "утра", "утреннее"]):
-        return "Утром"
-    elif any(word in message_lower for word in ["днем", "днём", "дневное"]):
-        return "Днем"
-    elif any(word in message_lower for word in ["вечером", "вечер", "вечернее"]):
-        return "Вечером"
-    elif any(word in message_lower for word in ["после", "позже"]):
-        # Пытаемся извлечь время после слова "после"
-        import re
-        after_match = re.search(r'после\s+(\d{1,2}):?(\d{2})?', message_lower)
-        if after_match:
-            hour = after_match.group(1)
-            minute = after_match.group(2) or "00"
-            return f"После {hour}:{minute}"
-    elif any(word in message_lower for word in ["до", "раньше"]):
-        # Пытаемся извлечь время после слова "до"
-        import re
-        before_match = re.search(r'до\s+(\d{1,2}):?(\d{2})?', message_lower)
-        if before_match:
-            hour = before_match.group(1)
-            minute = before_match.group(2) or "00"
-            return f"До {hour}:{minute}"
-    
-    # Проверяем на упоминания дат
-    if any(word in message_lower for word in ["завтра", "tomorrow"]):
-        return "Завтра"
-    elif any(word in message_lower for word in ["послезавтра"]):
-        return "Послезавтра"
-    elif any(word in message_lower for word in ["сегодня", "today"]):
-        return "Сегодня"
-    
-    return ""
 
 
 def _build_system_prompt(
@@ -269,7 +464,9 @@ def _build_system_prompt(
 ВАЖНО:
 - Не спрашивай "На какое время вас записать?", если ты еще не проверил доступность. Сначала вызови инструмент, получи слоты, и только потом выводи их клиенту.
 - Если слотов нет, предложи ближайшие доступные или спроси про другой день.
-- не задавай вопросов по мастерам и услугам, это не твоё дело.
+- Не задавай вопросов по мастерам и услугам, это не твоё дело.
+- FindSlots автоматически получает слоты на 3 дня вперед, не нужно спрашивать клиента о конкретной дате.
+
 """
     
     return prompt
