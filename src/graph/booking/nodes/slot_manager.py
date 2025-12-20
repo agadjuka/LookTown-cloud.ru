@@ -166,7 +166,15 @@ def _verify_slot_time_availability(
             yclients_service = YclientsService()
         except ValueError as e:
             logger.error(f"Ошибка конфигурации YclientsService: {e}")
+            # Сбрасываем время при ошибке конфигурации
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time"] = None
+            updated_booking_state["slot_time_verified"] = None
             return {
+                "extracted_info": {
+                    **state.get("extracted_info", {}),
+                    "booking": updated_booking_state
+                },
                 "answer": "Извините, произошла ошибка при проверке доступности времени. Попробуйте еще раз."
             }
         

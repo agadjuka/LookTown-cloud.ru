@@ -236,7 +236,35 @@ def _merge_booking_state(
     for key, value in extracted_data.items():
         # Если значение пришло (даже если это новое имя услуги) - обновляем
         if value is not None:
-            current_details[key] = value
+            # Валидация и преобразование типов для числовых полей
+            if key == "service_id":
+                # Преобразуем service_id в int, если это строка
+                try:
+                    if isinstance(value, str):
+                        current_details[key] = int(value)
+                    elif isinstance(value, int):
+                        current_details[key] = value
+                    else:
+                        logger.warning(f"Неверный тип service_id: {type(value)}, значение: {value}")
+                        continue
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Не удалось преобразовать service_id в int: {value}, ошибка: {e}")
+                    continue
+            elif key == "master_id":
+                # Преобразуем master_id в int, если это строка
+                try:
+                    if isinstance(value, str):
+                        current_details[key] = int(value)
+                    elif isinstance(value, int):
+                        current_details[key] = value
+                    else:
+                        logger.warning(f"Неверный тип master_id: {type(value)}, значение: {value}")
+                        continue
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Не удалось преобразовать master_id в int: {value}, ошибка: {e}")
+                    continue
+            else:
+                current_details[key] = value
         # Если value is None, мы это уже обработали выше для спец. полей,
         # либо игнорируем для остальных, чтобы не стереть случайно
     
