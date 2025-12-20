@@ -31,6 +31,8 @@ from updater import PromptUpdater
 from tools_helper import get_all_tools, get_tool_info, execute_tool
 from tools_parser import ToolsParser
 from tools_updater import ToolsUpdater
+from booking_graph_parser import BookingGraphParser
+from booking_graph_updater import BookingGraphUpdater
 
 # Указываем путь к шаблонам
 template_dir = Path(__file__).parent / "templates"
@@ -41,6 +43,8 @@ parser = PromptParser(project_root)
 updater = PromptUpdater(project_root)
 tools_parser = ToolsParser(project_root)
 tools_updater = ToolsUpdater(project_root)
+booking_parser = BookingGraphParser(project_root)
+booking_updater = BookingGraphUpdater(project_root)
 
 
 @app.route("/")
@@ -84,6 +88,48 @@ def update_stage_prompt(stage_name):
         updater.update_stage_prompt(stage_name, new_prompt)
         return jsonify({"success": True})
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/booking-graph/nodes", methods=["GET"])
+def get_booking_graph_nodes():
+    """Получить все промпты узлов подграфа бронирования."""
+    try:
+        data = booking_parser.parse()
+        print(f"[DEBUG API] Возвращаем узлы подграфа: {list(data.get('nodes', {}).keys())}")
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR API] Ошибка получения узлов подграфа: {error_msg}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/booking-graph/nodes/<node_name>/prompt", methods=["PUT"])
+def update_booking_node_prompt(node_name):
+    """Обновить промпт узла подграфа бронирования."""
+    try:
+        new_prompt = request.json.get("prompt")
+        if not new_prompt:
+            return jsonify({"error": "Промпт не может быть пустым"}), 400
+        
+        node_updaters = {
+            "analyzer": booking_updater.update_analyzer_prompt,
+            "service_manager": booking_updater.update_service_manager_prompt,
+            "slot_manager": booking_updater.update_slot_manager_prompt,
+            "contact_collector": booking_updater.update_contact_collector_prompt,
+            "finalizer": booking_updater.update_finalizer_prompt,
+        }
+        
+        if node_name not in node_updaters:
+            return jsonify({"error": f"Неизвестный узел: {node_name}"}), 400
+        
+        node_updaters[node_name](new_prompt)
+        return jsonify({"success": True})
+    except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        print(f"[ERROR API] Ошибка обновления промпта узла: {error_msg}")
         return jsonify({"error": str(e)}), 500
 
 

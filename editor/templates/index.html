@@ -120,7 +120,7 @@
 
         .form-group textarea {
             width: 100%;
-            min-height: 400px;
+            min-height: calc(100vh - 350px);
             padding: 15px;
             border: 2px solid #e9ecef;
             border-radius: 10px;
@@ -129,6 +129,72 @@
             line-height: 1.6;
             resize: vertical;
             transition: border-color 0.3s;
+        }
+        
+        .booking-nodes-list {
+            list-style: none;
+            margin-top: 10px;
+            padding-left: 0;
+            padding-top: 10px;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
+        .booking-node-item {
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            font-size: 0.95em;
+            color: white !important;
+            display: flex !important;
+            justify-content: space-between;
+            align-items: center;
+            min-height: 40px;
+        }
+        
+        .booking-node-item:hover {
+            transform: translateX(5px);
+            background: rgba(255, 255, 255, 0.4);
+            border-color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .booking-node-item.active {
+            background: rgba(255, 255, 255, 0.95) !important;
+            color: #495057 !important;
+            border-color: white;
+            font-weight: 600;
+        }
+        
+        .booking-node-item span {
+            color: inherit;
+        }
+        
+        .booking-node-editor {
+            display: none !important;
+        }
+        
+        .booking-node-editor.active {
+            display: block !important;
+        }
+        
+        /* Редакторы узлов должны показываться внутри редактора стадии */
+        #booking-nodes-editors {
+            display: block !important;
+            visibility: visible !important;
+        }
+        
+        .node-type-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-left: 10px;
+            background: rgba(255, 255, 255, 0.2);
         }
 
         .form-group textarea:focus {
@@ -618,22 +684,59 @@
 
     <script>
         let promptsData = {};
+        let bookingNodesData = {};
+        
+        // Функция для безопасной вставки текста в HTML
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         // Загрузка данных при старте
         async function loadData() {
             showLoading();
             try {
-                const response = await fetch('/api/prompts');
-                promptsData = await response.json();
+                // Загружаем промпты и узлы подграфа параллельно
+                const [promptsResponse, nodesResponse] = await Promise.all([
+                    fetch('/api/prompts'),
+                    fetch('/api/booking-graph/nodes')
+                ]);
+                
+                promptsData = await promptsResponse.json();
+                bookingNodesData = await nodesResponse.json();
+                
+                console.log('Загружены данные узлов:', bookingNodesData);
                 
                 // Заполняем промпт роутера
                 document.getElementById('router-prompt').value = promptsData.router_prompt || '';
                 
-                // Заполняем стадии
+                // Заполняем стадии (после загрузки данных узлов)
                 renderStages();
+                
+                // Отрисовываем узлы подграфа после создания элементов
+                // Используем несколько попыток, так как элементы могут создаваться асинхронно
+                let attempts = 0;
+                const tryRenderNodes = () => {
+                    attempts++;
+                    const nodesList = document.getElementById('booking-nodes-list');
+                    if (nodesList && bookingNodesData && bookingNodesData.nodes) {
+                        console.log('Элементы найдены, отрисовываем узлы (попытка ' + attempts + ')');
+                        renderBookingNodes();
+                    } else if (attempts < 10) {
+                        console.log('Ждем создания элементов (попытка ' + attempts + ')');
+                        setTimeout(tryRenderNodes, 100);
+                    } else {
+                        console.error('Не удалось найти элементы после 10 попыток');
+                    }
+                };
+                tryRenderNodes();
+                
                 hideLoading();
             } catch (error) {
                 showNotification('Ошибка загрузки данных: ' + error.message, 'error');
+                console.error('Ошибка загрузки:', error);
                 hideLoading();
             }
         }
@@ -652,23 +755,297 @@
                 li.className = 'stage-item';
                 li.setAttribute('data-stage', stage.key);
                 li.innerHTML = `<span>${stage.name}</span>`;
-                li.onclick = () => switchEditor(stage.key);
+                li.onclick = () => {
+                    switchEditor(stage.key);
+                    // Если это booking, принудительно отрисовываем узлы
+                    if (stage.key === 'booking') {
+                        setTimeout(() => {
+                            console.log('Принудительная отрисовка узлов при клике на booking');
+                            renderBookingNodes();
+                        }, 200);
+                    }
+                };
                 stagesList.appendChild(li);
+                
+                // Если это стадия booking, добавляем список узлов
+                if (stage.key === 'booking') {
+                    const nodesList = document.createElement('ul');
+                    nodesList.className = 'booking-nodes-list';
+                    nodesList.id = 'booking-nodes-list';
+                    li.appendChild(nodesList);
+                    
+                    // Добавляем редактор с узлами
+                    const editor = document.createElement('div');
+                    editor.className = 'prompt-editor';
+                    editor.setAttribute('data-editor', stage.key);
+                    editor.innerHTML = `
+                        <div id="booking-stage-prompt-section">
+                            <h2>${stage.name}</h2>
+                            <div style="margin-bottom: 20px;">
+                                <button class="save-btn" onclick="showBookingStagePrompt()" style="background: #6c757d; margin-right: 10px;">← Вернуться к промпту стадии</button>
+                            </div>
+                            <div class="form-group">
+                                <label>Промпт стадии:</label>
+                                <textarea id="${stage.key}-prompt">${stage.prompt || ''}</textarea>
+                            </div>
+                            <button class="save-btn" onclick="saveStagePrompt('${stage.key}')">Сохранить промпт</button>
+                        </div>
+                        <div id="booking-nodes-editors" style="margin-top: 40px; display: none;"></div>
+                    `;
+                    stageEditors.appendChild(editor);
+                    
+                    // НЕ вызываем renderBookingNodes здесь - данные могут быть еще не загружены
+                } else {
+                    // Обычный редактор для других стадий
+                    const editor = document.createElement('div');
+                    editor.className = 'prompt-editor';
+                    editor.setAttribute('data-editor', stage.key);
+                    editor.innerHTML = `
+                        <h2>${stage.name}</h2>
+                        <div class="form-group">
+                            <label>Промпт стадии:</label>
+                            <textarea id="${stage.key}-prompt">${stage.prompt || ''}</textarea>
+                        </div>
+                        <button class="save-btn" onclick="saveStagePrompt('${stage.key}')">Сохранить промпт</button>
+                    `;
+                    stageEditors.appendChild(editor);
+                }
+            });
+        }
+        
+        // Отрисовка узлов подграфа бронирования
+        function renderBookingNodes() {
+            console.log('=== renderBookingNodes вызвана ===');
+            const nodesList = document.getElementById('booking-nodes-list');
+            const nodesEditors = document.getElementById('booking-nodes-editors');
+            
+            console.log('nodesList:', nodesList);
+            console.log('nodesEditors:', nodesEditors);
+            console.log('bookingNodesData:', bookingNodesData);
+            
+            if (!nodesList || !nodesEditors) {
+                console.error('Элементы для узлов не найдены! nodesList:', nodesList, 'nodesEditors:', nodesEditors);
+                return;
+            }
+            
+            if (!bookingNodesData || !bookingNodesData.nodes) {
+                console.error('Данные узлов не загружены:', bookingNodesData);
+                nodesList.innerHTML = '<li style="color: rgba(255,255,255,0.8); padding: 10px; font-size: 0.9em;">Загрузка узлов...</li>';
+                return;
+            }
+            
+            const nodeNames = {
+                'analyzer': 'Анализатор',
+                'service_manager': 'Менеджер услуг',
+                'slot_manager': 'Менеджер слотов',
+                'contact_collector': 'Сборщик контактов',
+                'finalizer': 'Финализатор'
+            };
+            
+            const nodes = bookingNodesData.nodes || {};
+            console.log('Отрисовка узлов. Всего узлов:', Object.keys(nodes).length);
+            console.log('Ключи узлов:', Object.keys(nodes));
+            
+            if (Object.keys(nodes).length === 0) {
+                console.error('Нет узлов для отрисовки!');
+                nodesList.innerHTML = '<li style="color: rgba(255,255,255,0.8); padding: 10px; font-size: 0.9em;">Узлы не найдены. Проверьте консоль.</li>';
+                return;
+            }
+            
+            // Принудительно очищаем и создаем заново
+            nodesList.innerHTML = '';
+            nodesEditors.innerHTML = '';
+            
+            Object.keys(nodes).forEach(nodeKey => {
+                const node = nodes[nodeKey];
+                
+                if (!node) {
+                    console.warn(`Узел ${nodeKey} не найден в данных`);
+                    return;
+                }
+                
+                // Добавляем в список
+                const li = document.createElement('li');
+                li.className = 'booking-node-item';
+                li.setAttribute('data-node', nodeKey);
+                
+                const span = document.createElement('span');
+                span.textContent = nodeNames[nodeKey] || nodeKey;
+                li.appendChild(span);
+                
+                if (node.is_template) {
+                    const badge = document.createElement('span');
+                    badge.className = 'node-type-badge';
+                    badge.textContent = 'Шаблон';
+                    li.appendChild(badge);
+                }
+                
+                li.onclick = () => {
+                    console.log('Клик по узлу:', nodeKey);
+                    switchBookingNode(nodeKey);
+                };
+                li.style.cursor = 'pointer';
+                nodesList.appendChild(li);
+                
+                console.log(`✓ Добавлен узел в список: ${nodeKey} (${nodeNames[nodeKey]})`);
+                console.log('  Элемент li:', li);
+                console.log('  Родитель nodesList:', nodesList);
+                console.log('  Детей в nodesList:', nodesList.children.length);
                 
                 // Добавляем редактор
                 const editor = document.createElement('div');
-                editor.className = 'prompt-editor';
-                editor.setAttribute('data-editor', stage.key);
-                editor.innerHTML = `
-                    <h2>${stage.name}</h2>
-                    <div class="form-group">
-                        <label>Промпт стадии:</label>
-                        <textarea id="${stage.key}-prompt">${stage.prompt || ''}</textarea>
-                    </div>
-                    <button class="save-btn" onclick="saveStagePrompt('${stage.key}')">Сохранить промпт</button>
-                `;
-                stageEditors.appendChild(editor);
+                editor.className = 'booking-node-editor';
+                editor.setAttribute('data-node', nodeKey);
+                
+                // Создаем элементы безопасно
+                const h3 = document.createElement('h3');
+                h3.style.marginTop = '30px';
+                h3.style.marginBottom = '20px';
+                h3.style.color = '#495057';
+                h3.textContent = nodeNames[nodeKey] || nodeKey;
+                editor.appendChild(h3);
+                
+                if (node.is_template) {
+                    const p = document.createElement('p');
+                    p.style.color = '#666';
+                    p.style.marginBottom = '15px';
+                    p.style.fontStyle = 'italic';
+                    p.textContent = 'Это шаблон промпта с динамическими переменными';
+                    editor.appendChild(p);
+                }
+                
+                const formGroup = document.createElement('div');
+                formGroup.className = 'form-group';
+                
+                const label = document.createElement('label');
+                label.textContent = 'Промпт узла:';
+                formGroup.appendChild(label);
+                
+                const textarea = document.createElement('textarea');
+                textarea.id = `booking-node-${nodeKey}-prompt`;
+                textarea.style.minHeight = 'calc(100vh - 450px)';
+                textarea.value = node.prompt || '';
+                formGroup.appendChild(textarea);
+                
+                editor.appendChild(formGroup);
+                
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'save-btn';
+                saveBtn.textContent = 'Сохранить промпт';
+                saveBtn.onclick = () => saveBookingNodePrompt(nodeKey);
+                editor.appendChild(saveBtn);
+                
+                nodesEditors.appendChild(editor);
             });
+            
+            console.log(`=== Узлы отрисованы успешно. Всего в списке: ${nodesList.children.length} ===`);
+            console.log('Список узлов:', Array.from(nodesList.children).map(li => li.textContent.trim()));
+            console.log('nodesList элемент:', nodesList);
+            console.log('nodesList видимый?', nodesList.offsetParent !== null);
+            console.log('nodesList стили:', window.getComputedStyle(nodesList).display);
+            
+            // Принудительно показываем список
+            nodesList.style.display = 'block';
+            nodesList.style.visibility = 'visible';
+            nodesList.style.opacity = '1';
+        }
+        
+        // Переключение узла подграфа
+        function switchBookingNode(nodeKey) {
+            console.log('=== Переключение на узел:', nodeKey, '===');
+            
+            // Скрываем промпт стадии
+            const stagePromptSection = document.getElementById('booking-stage-prompt-section');
+            if (stagePromptSection) {
+                stagePromptSection.style.display = 'none';
+                console.log('✓ Скрыт промпт стадии');
+            }
+            
+            // Показываем контейнер редакторов узлов
+            const nodesEditorsContainer = document.getElementById('booking-nodes-editors');
+            if (nodesEditorsContainer) {
+                nodesEditorsContainer.style.display = 'block';
+                nodesEditorsContainer.style.visibility = 'visible';
+                console.log('✓ Показан контейнер редакторов');
+            } else {
+                console.error('❌ Контейнер booking-nodes-editors не найден!');
+            }
+            
+            // Убираем active со всех узлов
+            document.querySelectorAll('.booking-node-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelectorAll('.booking-node-editor').forEach(editor => {
+                editor.classList.remove('active');
+                editor.style.display = 'none';
+            });
+            
+            // Добавляем active к выбранным
+            const nodeItem = document.querySelector(`.booking-node-item[data-node="${nodeKey}"]`);
+            const editor = document.querySelector(`.booking-node-editor[data-node="${nodeKey}"]`);
+            
+            if (nodeItem) {
+                nodeItem.classList.add('active');
+                console.log('✓ Активирован nodeItem');
+            } else {
+                console.error('❌ nodeItem не найден для:', nodeKey);
+            }
+            
+            if (editor) {
+                editor.classList.add('active');
+                editor.style.display = 'block';
+                console.log('✓ Активирован и показан editor');
+            } else {
+                console.error('❌ editor не найден для:', nodeKey);
+            }
+        }
+        
+        // Функция для возврата к промпту стадии
+        function showBookingStagePrompt() {
+            const stagePromptSection = document.getElementById('booking-stage-prompt-section');
+            const nodesEditorsContainer = document.getElementById('booking-nodes-editors');
+            
+            if (stagePromptSection) {
+                stagePromptSection.style.display = 'block';
+            }
+            if (nodesEditorsContainer) {
+                nodesEditorsContainer.style.display = 'none';
+            }
+            
+            // Убираем active со всех узлов
+            document.querySelectorAll('.booking-node-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.booking-node-editor').forEach(editor => {
+                editor.classList.remove('active');
+                editor.style.display = 'none';
+            });
+        }
+        
+        // Сохранение промпта узла подграфа
+        async function saveBookingNodePrompt(nodeKey) {
+            showLoading();
+            const prompt = document.getElementById(`booking-node-${nodeKey}-prompt`).value;
+            
+            try {
+                const response = await fetch(`/api/booking-graph/nodes/${nodeKey}/prompt`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt }),
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showNotification('Промпт узла успешно сохранен!', 'success');
+                } else {
+                    showNotification('Ошибка: ' + result.error, 'error');
+                }
+                hideLoading();
+            } catch (error) {
+                showNotification('Ошибка сохранения: ' + error.message, 'error');
+                hideLoading();
+            }
         }
 
         // Переключение редактора
@@ -676,6 +1053,8 @@
             // Убираем active со всех элементов
             document.querySelectorAll('.stage-item').forEach(item => item.classList.remove('active'));
             document.querySelectorAll('.prompt-editor').forEach(editor => editor.classList.remove('active'));
+            document.querySelectorAll('.booking-node-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.booking-node-editor').forEach(editor => editor.classList.remove('active'));
             
             // Добавляем active к выбранным
             const stageItem = document.querySelector(`[data-stage="${editorName}"]`);
@@ -683,6 +1062,18 @@
             
             if (stageItem) stageItem.classList.add('active');
             if (editor) editor.classList.add('active');
+            
+            // Если выбрана стадия booking, убеждаемся что узлы отрисованы
+            if (editorName === 'booking') {
+                // Даем время на отрисовку элементов, затем отрисовываем узлы
+                setTimeout(() => {
+                    if (bookingNodesData && bookingNodesData.nodes) {
+                        renderBookingNodes();
+                    } else {
+                        console.warn('Данные узлов еще не загружены при переключении на booking');
+                    }
+                }, 100);
+            }
             
             // Загружаем инструменты если переключились на вкладку инструментов
             if (editorName === 'tools') {

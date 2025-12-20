@@ -11,7 +11,7 @@ class ResponsesAPIConfig:
     def __init__(self):
         self.api_key = os.getenv("API_KEY")
         self.base_url = "https://foundation-models.api.cloud.ru/v1"
-        self.model = "ai-sage/GigaChat3-10B-A1.8B"
+        self.model = "openai/gpt-oss-120b"
         
         if not self.api_key:
             # Если API_KEY не задан, можно попробовать прочитать из старых переменных или оставить пустым
@@ -29,3 +29,4 @@ class ResponsesAPIConfig:
         """Для совместимости, если где-то используется"""
         return "default"
 
+# "ai-sage/GigaChat3-10B-A1.8B"
