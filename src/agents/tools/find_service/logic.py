@@ -6,6 +6,10 @@ from typing import Dict, List, Any, Optional
 from ..common.yclients_service import YclientsService
 from ..common.service_master_mapper import get_service_master_mapper
 from ..common.book_times_logic import _normalize_name, _get_name_variants
+from .service_matcher import ServiceMatcher
+
+# Создаем глобальный экземпляр матчера (он переиспользуется для всех запросов)
+_service_matcher = ServiceMatcher()
 
 
 def _normalize_text(text: str) -> str:
@@ -23,55 +27,12 @@ def _normalize_text(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
 
-def _is_service_similar(service_title: str, search_query: str) -> bool:
-    """
-    Проверяет, похоже ли название услуги на поисковый запрос
-    
-    Args:
-        service_title: Название услуги
-        search_query: Поисковый запрос
-        
-    Returns:
-        True если услуга похожа на запрос
-    """
-    if not service_title or not search_query:
-        return False
-    
-    normalized_title = _normalize_text(service_title)
-    normalized_query = _normalize_text(search_query)
-    
-    # Точное совпадение
-    if normalized_title == normalized_query:
-        return True
-    
-    # Поисковый запрос содержится в названии услуги
-    if normalized_query in normalized_title:
-        return True
-    
-    # Название услуги содержится в поисковом запросе
-    if normalized_title in normalized_query:
-        return True
-    
-    # Проверяем совпадение по словам (если хотя бы одно слово совпадает)
-    query_words = set(normalized_query.split())
-    title_words = set(normalized_title.split())
-    
-    # Если есть пересечение слов (исключая очень короткие слова)
-    common_words = query_words & title_words
-    meaningful_words = {w for w in common_words if len(w) > 2}
-    
-    if meaningful_words:
-        return True
-    
-    return False
-
-
 async def find_service_logic(
     yclients_service: YclientsService,
     service_name: str
 ) -> Dict[str, Any]:
     """
-    Основная логика поиска услуг по названию
+    Основная логика поиска услуг по названию с использованием умного поиска
     
     Args:
         yclients_service: Сервис для работы с API
@@ -91,49 +52,61 @@ async def find_service_logic(
                 "services": []
             }
         
-        # Ищем похожие услуги
-        matching_services = []
-        for service in all_services:
-            # Проверяем активность услуги
-            if not service.get('active', 1):
-                continue
-            
-            # Получаем название услуги
-            service_title = service.get('title', '') or service.get('name', '')
-            if not service_title:
-                continue
-            
-            # Проверяем похожесть
-            if _is_service_similar(service_title, service_name):
-                service_id = service.get('id')
-                price_min = service.get('price_min')
-                price_max = service.get('price_max')
-                
-                # Формируем цену
-                if price_min is not None and price_max is not None:
-                    if price_min == price_max:
-                        price = f"{int(price_min)}"
-                    else:
-                        price = f"{int(price_min)} - {int(price_max)}"
-                elif price_min is not None:
-                    price = f"{int(price_min)}"
-                elif price_max is not None:
-                    price = f"{int(price_max)}"
-                else:
-                    price = "Не указана"
-                
-                matching_services.append({
-                    "id": service_id,
-                    "title": service_title,
-                    "price": price
-                })
+        # Фильтруем только активные услуги
+        active_services = [
+            service for service in all_services 
+            if service.get('active', 1) and (service.get('title') or service.get('name'))
+        ]
         
-        if not matching_services:
+        if not active_services:
+            return {
+                "success": False,
+                "error": "Не найдено активных услуг",
+                "services": []
+            }
+        
+        # Используем умный поиск для нахождения наиболее релевантных услуг
+        # Минимальная релевантность 50% для включения в результат (повышено для фильтрации лишнего)
+        matches = _service_matcher.find_best_matches(
+            active_services,
+            service_name,
+            min_relevance=50.0,
+            max_results=15
+        )
+        
+        if not matches:
             return {
                 "success": False,
                 "error": f"Услуги с названием '{service_name}' не найдены",
                 "services": []
             }
+        
+        # Формируем результат
+        matching_services = []
+        for service, relevance in matches:
+            service_id = service.get('id')
+            service_title = service.get('title', '') or service.get('name', '')
+            price_min = service.get('price_min')
+            price_max = service.get('price_max')
+            
+            # Формируем цену
+            if price_min is not None and price_max is not None:
+                if price_min == price_max:
+                    price = f"{int(price_min)}"
+                else:
+                    price = f"{int(price_min)} - {int(price_max)}"
+            elif price_min is not None:
+                price = f"{int(price_min)}"
+            elif price_max is not None:
+                price = f"{int(price_max)}"
+            else:
+                price = "Не указана"
+            
+            matching_services.append({
+                "id": service_id,
+                "title": service_title,
+                "price": price
+            })
         
         return {
             "success": True,
@@ -213,6 +186,7 @@ async def _check_master_has_service_category(
 def _calculate_service_relevance(service_title: str, search_query: str) -> float:
     """
     Вычисляет релевантность услуги к поисковому запросу
+    Использует умный поиск с морфологическим анализом
     
     Args:
         service_title: Название услуги
@@ -221,53 +195,7 @@ def _calculate_service_relevance(service_title: str, search_query: str) -> float
     Returns:
         float: Оценка релевантности (чем выше, тем релевантнее)
     """
-    if not service_title or not search_query:
-        return 0.0
-    
-    normalized_title = _normalize_text(service_title)
-    normalized_query = _normalize_text(search_query)
-    
-    # Точное совпадение - максимальная релевантность
-    if normalized_title == normalized_query:
-        return 100.0
-    
-    # Поисковый запрос полностью содержится в названии услуги
-    if normalized_query in normalized_title:
-        # Чем ближе к началу, тем выше релевантность
-        position = normalized_title.find(normalized_query)
-        relevance = 80.0 - (position * 0.1)  # Штраф за позицию
-        return max(relevance, 50.0)
-    
-    # Название услуги полностью содержится в поисковом запросе
-    if normalized_title in normalized_query:
-        return 60.0
-    
-    # Совпадение по словам
-    query_words = set(normalized_query.split())
-    title_words = set(normalized_title.split())
-    
-    # Исключаем очень короткие слова
-    meaningful_query_words = {w for w in query_words if len(w) > 2}
-    meaningful_title_words = {w for w in title_words if len(w) > 2}
-    
-    if not meaningful_query_words or not meaningful_title_words:
-        return 0.0
-    
-    # Вычисляем процент совпадающих слов
-    common_words = meaningful_query_words & meaningful_title_words
-    if common_words:
-        # Процент совпадения слов
-        word_match_ratio = len(common_words) / len(meaningful_query_words)
-        # Базовая релевантность на основе совпадения слов
-        base_relevance = word_match_ratio * 50.0
-        
-        # Бонус если все слова запроса найдены
-        if len(common_words) == len(meaningful_query_words):
-            base_relevance += 20.0
-        
-        return base_relevance
-    
-    return 0.0
+    return _service_matcher.calculate_relevance(service_title, search_query)
 
 
 async def find_master_by_service_logic(
