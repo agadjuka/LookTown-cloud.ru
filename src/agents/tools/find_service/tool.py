@@ -63,10 +63,12 @@ class FindService(BaseModel):
                 result_lines.append(f"{index}. {name} (ID: {service_id}) - {price} руб.")
             result_lines.append("")  # Пустая строка между блоками
         
-        # Блок услуг Топ-мастера
+        # Блок услуг Топ-мастера (продолжаем нумерацию с конца списка Мастера)
         if top_master_services:
             result_lines.append(f"{category_name} - Топ-мастер:")
-            for index, service in enumerate(top_master_services, start=1):
+            # Начинаем нумерацию с количества услуг Мастера + 1
+            start_number = len(master_services) + 1
+            for index, service in enumerate(top_master_services, start=start_number):
                 name = service.get('name', 'Неизвестно')
                 price = service.get('prices', 'Не указана')
                 service_id = service.get('id', 'Не указан')
