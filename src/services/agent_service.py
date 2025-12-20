@@ -4,6 +4,7 @@
 import os
 import time
 import asyncio
+import json
 from datetime import datetime
 import pytz
 from typing import Optional, List, Dict, Any
@@ -131,6 +132,19 @@ class AgentService:
         
         logger.info(f"Загружено {len(history_messages)} сообщений из истории для conversation_id={conversation_id}")
         
+        # Загружаем extracted_info из последнего системного сообщения
+        extracted_info = None
+        for msg in reversed(history_messages):
+            if msg.get("role") == "system" and msg.get("content", "").startswith("EXTRACTED_INFO:"):
+                try:
+                    extracted_info_json = msg["content"].replace("EXTRACTED_INFO:", "").strip()
+                    extracted_info = json.loads(extracted_info_json)
+                    logger.debug(f"Загружен extracted_info из истории: {extracted_info}")
+                    break
+                except (json.JSONDecodeError, KeyError) as e:
+                    logger.warning(f"Ошибка при загрузке extracted_info из истории: {e}")
+                    break
+        
         # Создаём начальное состояние
         initial_state: ConversationState = {
             "message": input_with_time,
@@ -138,7 +152,7 @@ class AgentService:
             "conversation_id": conversation_id,
             "history": history_messages,  # Передаём историю в граф
             "stage": None,
-            "extracted_info": None,
+            "extracted_info": extracted_info,
             "answer": "",
             "manager_alert": None
         }
@@ -173,6 +187,21 @@ class AgentService:
                 tools_info,
                 {"tools": used_tools}
             )
+        
+        # Сохраняем extracted_info в системное сообщение для следующего вызова
+        extracted_info = result_state.get("extracted_info")
+        if extracted_info:
+            try:
+                extracted_info_json = json.dumps(extracted_info, ensure_ascii=False)
+                await asyncio.to_thread(
+                    conversation_repo.append_message,
+                    conversation_id,
+                    "system",
+                    f"EXTRACTED_INFO:{extracted_info_json}"
+                )
+                logger.debug(f"Сохранен extracted_info в системное сообщение")
+            except Exception as e:
+                logger.warning(f"Ошибка при сохранении extracted_info: {e}")
         
         # Нормализуем даты и время в ответе
         from .date_normalizer import normalize_dates_in_text

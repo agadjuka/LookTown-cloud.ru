@@ -52,6 +52,8 @@ class BookingAgent(BaseAgent):
             extracted_info = state.get("extracted_info") or {}
             booking_data = extracted_info.get("booking", {})
             
+            logger.debug(f"Текущее booking_data из extracted_info: {booking_data}")
+            
             # Создаем начальное BookingSubState
             booking_state: BookingSubState = {
                 "service_id": booking_data.get("service_id"),
@@ -65,6 +67,8 @@ class BookingAgent(BaseAgent):
                 "is_finalized": booking_data.get("is_finalized", False)
             }
             
+            logger.debug(f"Начальное booking_state для графа: {booking_state}")
+            
             # Создаем состояние для графа (с booking и conversation)
             graph_state = {
                 "booking": booking_state,
@@ -77,13 +81,23 @@ class BookingAgent(BaseAgent):
             # Извлекаем обновленное состояние бронирования
             updated_booking_state = result_state.get("booking", booking_state)
             
+            logger.debug(f"Обновленное booking_state из графа: {updated_booking_state}")
+            
             # Извлекаем обновленное состояние диалога (с answer и другими полями)
             updated_conversation_state = result_state.get("conversation", state)
             
             # Обновляем extracted_info с новыми данными бронирования
-            updated_extracted_info = updated_conversation_state.get("extracted_info") or extracted_info.copy()
-            if "booking" not in updated_extracted_info:
-                updated_extracted_info["booking"] = dict(updated_booking_state)
+            # Используем extracted_info из обновленного conversation_state, если он есть
+            updated_extracted_info = updated_conversation_state.get("extracted_info")
+            if updated_extracted_info is None:
+                # Если нет, создаем копию исходного
+                updated_extracted_info = extracted_info.copy()
+            
+            # Всегда обновляем booking данными из графа (они самые актуальные)
+            updated_extracted_info = updated_extracted_info.copy()
+            updated_extracted_info["booking"] = dict(updated_booking_state)
+            
+            logger.debug(f"Финальное extracted_info.booking: {updated_extracted_info.get('booking')}")
             
             # Извлекаем answer и другие поля из обновленного conversation_state
             answer = updated_conversation_state.get("answer", "")

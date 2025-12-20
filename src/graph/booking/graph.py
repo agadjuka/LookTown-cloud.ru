@@ -46,6 +46,8 @@ def _conversation_state_to_booking_substate(
     """
     Извлекает BookingSubState из ConversationState после выполнения узла
     
+    Не затирает существующие данные None-ами из booking_data
+    
     Args:
         conversation_state: Состояние после выполнения узла
         current_booking_state: Текущее состояние бронирования (базовые значения)
@@ -57,9 +59,16 @@ def _conversation_state_to_booking_substate(
     extracted_info = conversation_state.get("extracted_info") or {}
     booking_data = extracted_info.get("booking", {})
     
-    # Объединяем с текущим состоянием (чтобы не потерять данные)
+    # Объединяем с текущим состоянием (не затираем существующие данные None-ами)
     updated_state = dict(current_booking_state)
-    updated_state.update(booking_data)
+    
+    for key, value in booking_data.items():
+        # Обновляем только если значение не None и не пустое
+        if value is not None and value != "":
+            updated_state[key] = value
+        # Если значение None в booking_data, но есть в current_booking_state, оставляем current_booking_state
+    
+    logger.debug(f"_conversation_state_to_booking_substate: current={current_booking_state}, booking_data={booking_data}, result={updated_state}")
     
     return updated_state
 
