@@ -4,6 +4,7 @@
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from ..services.responses_api.orchestrator import ResponsesOrchestrator
 from ..services.responses_api.tools_registry import ResponsesToolsRegistry
 from ..services.logger_service import logger
@@ -53,23 +54,88 @@ class BaseAgent:
         # Результат CallManager (если был вызван)
         self._call_manager_result = None
         
-        # КРИТИЧНО: Сохраняем новые сообщения из orchestrator для передачи в LangGraph
-        self._last_new_messages = []
-        
-    def __call__(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> str:
+    def _dicts_to_messages(self, messages_dicts: List[Dict[str, Any]]) -> List:
         """
-        Выполнение запроса к агенту
+        Преобразует словари сообщений из orchestrator в объекты BaseMessage для LangGraph
         
-        :param message: Сообщение для агента
-        :param history: История сообщений (преобразованная из LangGraph messages)
-        :param chat_id: ID чата в Telegram (для передачи в инструменты)
-        :return: Ответ агента
+        Args:
+            messages_dicts: Список словарей с полями role, content, tool_calls, tool_call_id
+            
+        Returns:
+            Список объектов BaseMessage
+        """
+        langgraph_messages = []
+        
+        for msg in messages_dicts:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            
+            if role == "user":
+                langgraph_messages.append(HumanMessage(content=content))
+            elif role == "assistant":
+                ai_msg = AIMessage(content=content)
+                # КРИТИЧНО: Сохраняем tool_calls, если они есть
+                if msg.get("tool_calls"):
+                    # Преобразуем tool_calls в формат LangChain
+                    tool_calls = []
+                    for tc in msg.get("tool_calls", []):
+                        if isinstance(tc, dict):
+                            # Формат из OpenAI SDK: {"id": "...", "type": "function", "function": {...}}
+                            func_dict = tc.get("function", {})
+                            func_name = func_dict.get("name", "")
+                            func_args_str = func_dict.get("arguments", "{}")
+                            
+                            # Парсим arguments из JSON строки
+                            try:
+                                func_args = json.loads(func_args_str) if isinstance(func_args_str, str) else func_args_str
+                            except json.JSONDecodeError:
+                                func_args = {}
+                            
+                            tool_calls.append({
+                                "name": func_name,
+                                "args": func_args,
+                                "id": tc.get("id", ""),
+                            })
+                        else:
+                            # Уже в формате LangChain
+                            tool_calls.append(tc)
+                    ai_msg.tool_calls = tool_calls
+                langgraph_messages.append(ai_msg)
+            elif role == "tool":
+                tool_call_id = msg.get("tool_call_id", "")
+                langgraph_messages.append(ToolMessage(
+                    content=content,
+                    tool_call_id=tool_call_id
+                ))
+            elif role == "system":
+                langgraph_messages.append(SystemMessage(content=content))
+        
+        return langgraph_messages
+    
+    def run(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Выполнение запроса к агенту (нативный метод для LangGraph)
+        
+        Возвращает словарь с результатами, включая все сгенерированные сообщения.
+        Это позволяет LangGraph автоматически добавить их в состояние через add_messages.
+        
+        Args:
+            message: Сообщение для агента
+            history: История сообщений (преобразованная из LangGraph messages)
+            chat_id: ID чата в Telegram (для передачи в инструменты)
+            
+        Returns:
+            Словарь с ключами:
+            - messages: список BaseMessage объектов (AIMessage с tool_calls, ToolMessage, итд)
+            - reply: текст финального ответа (для обратной совместимости)
+            - tool_calls: список вызовов инструментов (опционально)
+            - call_manager: флаг вызова CallManager (опционально)
+            - manager_alert: сообщение для менеджера (опционально)
         """
         try:
-            # Очищаем предыдущие tool_calls и сообщения
+            # Очищаем предыдущие tool_calls
             self._last_tool_calls = []
             self._call_manager_result = None
-            self._last_new_messages = []
             
             # Логируем сообщение пользователя
             llm_request_logger.start_new_request()
@@ -95,14 +161,11 @@ class BaseAgent:
             # Выполняем запрос через orchestrator
             result = self.orchestrator.run_turn(message, history, chat_id=chat_id)
             
-            # КРИТИЧНО: Сохраняем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+            # Преобразуем новые сообщения из словарей в BaseMessage объекты
             new_messages_dicts = result.get("new_messages", [])
-            if new_messages_dicts:
-                # Преобразуем в формат LangGraph
-                from ..graph.utils import orchestrator_messages_to_langgraph
-                self._last_new_messages = orchestrator_messages_to_langgraph(new_messages_dicts)
+            new_messages = self._dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
             
-            # Сохраняем tool_calls
+            # Сохраняем tool_calls для обратной совместимости
             if result.get("tool_calls"):
                 self._last_tool_calls = result["tool_calls"]
             
@@ -112,7 +175,13 @@ class BaseAgent:
                     "user_message": result.get("reply", ""),
                     "manager_alert": result.get("manager_alert"),
                 }
-                return "[CALL_MANAGER_RESULT]"
+                return {
+                    "messages": new_messages,
+                    "reply": result.get("reply", ""),
+                    "tool_calls": result.get("tool_calls", []),
+                    "call_manager": True,
+                    "manager_alert": result.get("manager_alert"),
+                }
             
             reply = result.get("reply", "")
             raw_response = result.get("raw_response")
@@ -124,8 +193,12 @@ class BaseAgent:
                 tool_calls=self._last_tool_calls if self._last_tool_calls else None,
                 raw_response=raw_response
             )
-                
-            return reply
+            
+            return {
+                "messages": new_messages,
+                "reply": reply,
+                "tool_calls": result.get("tool_calls", []),
+            }
         
         except Exception as e:
             import traceback
@@ -146,3 +219,23 @@ class BaseAgent:
             logger.error(f"Сообщение агента: {message[:200]}")
             logger.error(f"Traceback:\n{error_traceback}")
             raise
+    
+    def __call__(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> str:
+        """
+        Выполнение запроса к агенту (для обратной совместимости)
+        
+        Этот метод оставлен для обратной совместимости со старым кодом.
+        Новый код должен использовать метод run().
+        
+        :param message: Сообщение для агента
+        :param history: История сообщений (преобразованная из LangGraph messages)
+        :param chat_id: ID чата в Telegram (для передачи в инструменты)
+        :return: Ответ агента (строка)
+        """
+        result = self.run(message, history, chat_id)
+        
+        # Проверяем CallManager
+        if result.get("call_manager"):
+            return "[CALL_MANAGER_RESULT]"
+        
+        return result.get("reply", "")

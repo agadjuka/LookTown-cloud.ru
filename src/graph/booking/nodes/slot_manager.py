@@ -2,10 +2,12 @@
 Узел менеджера слотов для предложения доступных временных слотов в процессе бронирования
 """
 import asyncio
+import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history, orchestrator_messages_to_langgraph
+from ...utils import messages_to_history
 from ..state import BookingSubState
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
@@ -57,6 +59,65 @@ def slot_manager_node(state: ConversationState) -> ConversationState:
     
     # Иначе - обычная логика: ищем и предлагаем слоты
     return _find_and_offer_slots(state, booking_state, service_id)
+
+
+def _dicts_to_messages(messages_dicts: List[Dict[str, Any]]) -> List:
+    """
+    Преобразует словари сообщений из orchestrator в объекты BaseMessage для LangGraph
+    
+    Args:
+        messages_dicts: Список словарей с полями role, content, tool_calls, tool_call_id
+        
+    Returns:
+        Список объектов BaseMessage
+    """
+    langgraph_messages = []
+    
+    for msg in messages_dicts:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        
+        if role == "user":
+            langgraph_messages.append(HumanMessage(content=content))
+        elif role == "assistant":
+            ai_msg = AIMessage(content=content)
+            # КРИТИЧНО: Сохраняем tool_calls, если они есть
+            if msg.get("tool_calls"):
+                # Преобразуем tool_calls в формат LangChain
+                tool_calls = []
+                for tc in msg.get("tool_calls", []):
+                    if isinstance(tc, dict):
+                        # Формат из OpenAI SDK: {"id": "...", "type": "function", "function": {...}}
+                        func_dict = tc.get("function", {})
+                        func_name = func_dict.get("name", "")
+                        func_args_str = func_dict.get("arguments", "{}")
+                        
+                        # Парсим arguments из JSON строки
+                        try:
+                            func_args = json.loads(func_args_str) if isinstance(func_args_str, str) else func_args_str
+                        except json.JSONDecodeError:
+                            func_args = {}
+                        
+                        tool_calls.append({
+                            "name": func_name,
+                            "args": func_args,
+                            "id": tc.get("id", ""),
+                        })
+                    else:
+                        # Уже в формате LangChain
+                        tool_calls.append(tc)
+                ai_msg.tool_calls = tool_calls
+            langgraph_messages.append(ai_msg)
+        elif role == "tool":
+            tool_call_id = msg.get("tool_call_id", "")
+            langgraph_messages.append(ToolMessage(
+                content=content,
+                tool_call_id=tool_call_id
+            ))
+        elif role == "system":
+            langgraph_messages.append(SystemMessage(content=content))
+    
+    return langgraph_messages
 
 
 def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str:
@@ -352,9 +413,9 @@ def _find_and_offer_slots(
         reply = result.get("reply", "")
         tool_calls = result.get("tool_calls", [])
         
-        # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+        # КРИТИЧНО: Преобразуем все новые сообщения из orchestrator в BaseMessage объекты
         new_messages_dicts = result.get("new_messages", [])
-        new_messages = orchestrator_messages_to_langgraph(new_messages_dicts) if new_messages_dicts else []
+        new_messages = _dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
         
         logger.info(f"Slot manager сгенерировал {len(new_messages)} новых сообщений")
         

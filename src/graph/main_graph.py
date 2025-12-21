@@ -132,41 +132,36 @@ class MainGraph:
         history = messages_to_history(messages) if messages else None
         chat_id = state.get("chat_id")
         
-        # Определяем стадию
-        stage_detection = self.stage_detector.detect_stage(message, history, chat_id=chat_id)
+        # Используем новый метод run() для получения всех сообщений
+        result = self.stage_detector.run(message, history, chat_id=chat_id)
         
-        # Проверяем, был ли вызван CallManager в StageDetectorAgent
-        if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result:
-            escalation_result = self.stage_detector._call_manager_result
+        # Получаем все новые сообщения из результата
+        new_messages = result.get("messages", [])
+        logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
+        
+        # Проверяем, был ли вызван CallManager
+        if result.get("call_manager"):
+            escalation_result = self.stage_detector._call_manager_result if hasattr(self.stage_detector, '_call_manager_result') and self.stage_detector._call_manager_result else {}
             logger.info(f"CallManager был вызван в StageDetectorAgent, chat_id: {chat_id}")
             
             # Получаем полную информацию о tool_calls (если есть)
-            tool_results = self.stage_detector._last_tool_calls if hasattr(self.stage_detector, '_last_tool_calls') and self.stage_detector._last_tool_calls else []
-            
-            # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
-            new_messages = self.stage_detector._last_new_messages if hasattr(self.stage_detector, '_last_new_messages') and self.stage_detector._last_new_messages else []
-            logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
+            tool_results = result.get("tool_calls", [])
             
             return {
                 "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
-                "answer": escalation_result.get("user_message"),
-                "manager_alert": escalation_result.get("manager_alert"),
+                "answer": escalation_result.get("user_message", result.get("reply", "")),
+                "manager_alert": escalation_result.get("manager_alert", result.get("manager_alert")),
                 "agent_name": "StageDetectorAgent",
                 "used_tools": ["CallManager"],
                 "tool_results": tool_results,
             }
         
-        # КРИТИЧНО: Даже если CallManager не был вызван, возвращаем messages (если есть)
-        # Это нужно для сохранения истории сообщений от StageDetectorAgent
-        new_messages = self.stage_detector._last_new_messages if hasattr(self.stage_detector, '_last_new_messages') and self.stage_detector._last_new_messages else []
-        if new_messages:
-            logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
-            return {
-                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
-                "stage": stage_detection.stage
-            }
+        # Определяем стадию через detect_stage (для обратной совместимости)
+        stage_detection = self.stage_detector.detect_stage(message, history, chat_id=chat_id)
         
+        # Возвращаем messages и stage
         return {
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
             "stage": stage_detection.stage
         }
     
@@ -196,49 +191,50 @@ class MainGraph:
         
         return stage
     
-    def _process_agent_result(self, agent, answer: str, state: ConversationState, agent_name: str) -> ConversationState:
+    def _process_agent_result(self, agent, message: str, history, chat_id: str, state: ConversationState, agent_name: str) -> ConversationState:
         """
         Обработка результата агента с проверкой на CallManager
         
         Args:
             agent: Экземпляр агента
-            answer: Ответ агента
+            message: Сообщение пользователя
+            history: История сообщений
+            chat_id: ID чата
             state: Текущее состояние графа
             agent_name: Имя агента
             
         Returns:
             Обновленное состояние графа с messages из orchestrator
         """
-        # Получаем полную информацию о tool_calls (не только имена)
-        tool_results = agent._last_tool_calls if hasattr(agent, '_last_tool_calls') and agent._last_tool_calls else []
-        used_tools = [tool["name"] for tool in tool_results] if tool_results else []
+        # Используем новый метод run() для получения всех сообщений
+        result = agent.run(message, history, chat_id=chat_id)
         
-        # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
-        new_messages = agent._last_new_messages if hasattr(agent, '_last_new_messages') and agent._last_new_messages else []
-        
+        # Получаем все новые сообщения из результата
+        new_messages = result.get("messages", [])
         logger.info(f"{agent_name} сгенерировал {len(new_messages)} новых сообщений")
         
-        # Агент теперь возвращает просто строку (ответ)
-        answer_text = answer
+        # Получаем полную информацию о tool_calls
+        tool_results = result.get("tool_calls", [])
+        used_tools = [tool.get("name") for tool in tool_results] if tool_results else []
         
         # Проверяем, был ли вызван CallManager через инструмент
-        if answer_text == "[CALL_MANAGER_RESULT]" and hasattr(agent, '_call_manager_result') and agent._call_manager_result:
-            escalation_result = agent._call_manager_result
+        if result.get("call_manager"):
+            escalation_result = agent._call_manager_result if hasattr(agent, '_call_manager_result') and agent._call_manager_result else {}
             chat_id = state.get("chat_id", "unknown")
             
             logger.info(f"CallManager был вызван через инструмент в агенте {agent_name}, chat_id: {chat_id}")
             
             return {
                 "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
-                "answer": escalation_result.get("user_message"),
-                "manager_alert": escalation_result.get("manager_alert"),
+                "answer": escalation_result.get("user_message", result.get("reply", "")),
+                "manager_alert": escalation_result.get("manager_alert", result.get("manager_alert")),
                 "agent_name": agent_name,
                 "used_tools": used_tools,
                 "tool_results": tool_results,
             }
         
         # Обычный ответ агента
-        answer = answer_text
+        answer = result.get("reply", "")
         
         return {
             "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
@@ -265,8 +261,7 @@ class MainGraph:
         history = messages_to_history(messages) if messages else None
         chat_id = state.get("chat_id")
         
-        agent_result = self.cancel_agent(message, history, chat_id=chat_id)
-        return self._process_agent_result(self.cancel_agent, agent_result, state, "CancelBookingAgent")
+        return self._process_agent_result(self.cancel_agent, message, history, chat_id, state, "CancelBookingAgent")
     
     def _handle_reschedule(self, state: ConversationState) -> ConversationState:
         """Обработка переноса"""
@@ -277,8 +272,7 @@ class MainGraph:
         history = messages_to_history(messages) if messages else None
         chat_id = state.get("chat_id")
         
-        agent_result = self.reschedule_agent(message, history, chat_id=chat_id)
-        return self._process_agent_result(self.reschedule_agent, agent_result, state, "RescheduleAgent")
+        return self._process_agent_result(self.reschedule_agent, message, history, chat_id, state, "RescheduleAgent")
     
     def _handle_view_my_booking(self, state: ConversationState) -> ConversationState:
         """Обработка просмотра записей"""
@@ -289,6 +283,5 @@ class MainGraph:
         history = messages_to_history(messages) if messages else None
         chat_id = state.get("chat_id")
         
-        agent_result = self.view_my_booking_agent(message, history, chat_id=chat_id)
-        return self._process_agent_result(self.view_my_booking_agent, agent_result, state, "ViewMyBookingAgent")
+        return self._process_agent_result(self.view_my_booking_agent, message, history, chat_id, state, "ViewMyBookingAgent")
 
