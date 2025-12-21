@@ -123,7 +123,7 @@ class MainGraph:
         return graph
     
     def _detect_stage(self, state: ConversationState) -> ConversationState:
-        """Узел определения стадии"""
+        """Узел определения стадии (Silent Node - не добавляет messages в историю)"""
         logger.info("Определение стадии диалога")
         
         message = state["message"]
@@ -135,7 +135,7 @@ class MainGraph:
         # Используем новый метод run() для получения всех сообщений
         result = self.stage_detector.run(message, history, chat_id=chat_id)
         
-        # Получаем все новые сообщения из результата
+        # Получаем все новые сообщения из результата (но НЕ возвращаем их в messages)
         new_messages = result.get("messages", [])
         
         # Проверяем, был ли вызван CallManager
@@ -146,8 +146,10 @@ class MainGraph:
             # Получаем полную информацию о tool_calls (если есть)
             tool_results = result.get("tool_calls", [])
             
+            # ВАЖНО: Если CallManager был вызван, это инструмент, поэтому возвращаем messages
+            # (CallManager - это реальный вызов инструмента, который должен быть в истории)
             return {
-                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем messages только при вызове инструмента
                 "answer": escalation_result.get("user_message", result.get("reply", "")),
                 "manager_alert": escalation_result.get("manager_alert", result.get("manager_alert")),
                 "agent_name": "StageDetectorAgent",
@@ -158,10 +160,11 @@ class MainGraph:
         # Определяем стадию через detect_stage (для обратной совместимости)
         stage_detection = self.stage_detector.detect_stage(message, history, chat_id=chat_id)
         
-        # Возвращаем messages и stage
+        # ВАЖНО: Роутер - это "тихий" узел, он НЕ должен добавлять промежуточные сообщения в историю
+        # Возвращаем только stage для маршрутизации
         return {
-            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
             "stage": stage_detection.stage
+            # НЕ возвращаем messages - это промежуточные "размышления" роутера, не нужные в истории
         }
     
     def _route_after_detect(self, state: ConversationState) -> Literal[
