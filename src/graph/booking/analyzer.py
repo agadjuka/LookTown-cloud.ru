@@ -33,7 +33,29 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
     last_user_message = state.get("message", "")
     # Преобразуем messages в history для обратной совместимости
     messages = state.get("messages", [])
-    history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else []
+    history = []
+    if messages:
+        for msg in messages:
+            # Если это словарь (старый формат)
+            if isinstance(msg, dict):
+                history.append({
+                    "role": msg.get("role", "user"), 
+                    "content": msg.get("content", "")
+                })
+            # Если это объект LangChain (новый формат)
+            else:
+                # Маппинг типов LangChain в наши роли
+                role = "user"
+                if hasattr(msg, "type"):
+                    if msg.type == "ai": role = "assistant"
+                    elif msg.type == "system": role = "system"
+                    elif msg.type == "tool": role = "tool"
+                    elif msg.type == "human": role = "user"
+                
+                history.append({
+                    "role": role, 
+                    "content": getattr(msg, "content", "")
+                })
     extracted_info = state.get("extracted_info") or {}
     
     # Получаем текущее состояние бронирования из extracted_info

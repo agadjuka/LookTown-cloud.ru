@@ -103,12 +103,16 @@ class ResponsesOrchestrator:
                 # Обрезаем историю: последние 30 сообщений, включая системные
                 # Используем большой max_tokens, чтобы обрезка шла по количеству сообщений
                 # trim_messages с strategy="last" оставит последние сообщения
+                from langchain_core.messages.utils import get_tokenizer
+                token_counter = get_tokenizer()
+                
                 trimmed_messages = trim_messages(
                     base_messages,
                     max_tokens=100000,  # Большое значение, чтобы обрезка шла по количеству
                     strategy="last",
                     include_system=True,
                     allow_partial=False,
+                    token_counter=token_counter,
                 )
                 
                 # Дополнительно ограничиваем до 30 сообщений (если trim_messages не сработал)

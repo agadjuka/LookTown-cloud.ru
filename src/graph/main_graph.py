@@ -105,7 +105,29 @@ class MainGraph:
         message = state["message"]
         # Преобразуем messages в history для обратной совместимости с агентами
         messages = state.get("messages", [])
-        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
+        history = []
+        if messages:
+            for msg in messages:
+                # Если это словарь (старый формат)
+                if isinstance(msg, dict):
+                    history.append({
+                        "role": msg.get("role", "user"), 
+                        "content": msg.get("content", "")
+                    })
+                # Если это объект LangChain (новый формат)
+                else:
+                    # Маппинг типов LangChain в наши роли
+                    role = "user"
+                    if hasattr(msg, "type"):
+                        if msg.type == "ai": role = "assistant"
+                        elif msg.type == "system": role = "system"
+                        elif msg.type == "tool": role = "tool"
+                        elif msg.type == "human": role = "user"
+                    
+                    history.append({
+                        "role": role, 
+                        "content": getattr(msg, "content", "")
+                    })
         chat_id = state.get("chat_id")
         
         # Определяем стадию
@@ -215,7 +237,29 @@ class MainGraph:
         message = state["message"]
         # Преобразуем messages в history для обратной совместимости с агентами
         messages = state.get("messages", [])
-        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
+        history = []
+        if messages:
+            for msg in messages:
+                # Если это словарь (старый формат)
+                if isinstance(msg, dict):
+                    history.append({
+                        "role": msg.get("role", "user"), 
+                        "content": msg.get("content", "")
+                    })
+                # Если это объект LangChain (новый формат)
+                else:
+                    # Маппинг типов LangChain в наши роли
+                    role = "user"
+                    if hasattr(msg, "type"):
+                        if msg.type == "ai": role = "assistant"
+                        elif msg.type == "system": role = "system"
+                        elif msg.type == "tool": role = "tool"
+                        elif msg.type == "human": role = "user"
+                    
+                    history.append({
+                        "role": role, 
+                        "content": getattr(msg, "content", "")
+                    })
         chat_id = state.get("chat_id")
         
         agent_result = self.cancel_agent(message, history, chat_id=chat_id)
@@ -227,7 +271,29 @@ class MainGraph:
         message = state["message"]
         # Преобразуем messages в history для обратной совместимости с агентами
         messages = state.get("messages", [])
-        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
+        history = []
+        if messages:
+            for msg in messages:
+                # Если это словарь (старый формат)
+                if isinstance(msg, dict):
+                    history.append({
+                        "role": msg.get("role", "user"), 
+                        "content": msg.get("content", "")
+                    })
+                # Если это объект LangChain (новый формат)
+                else:
+                    # Маппинг типов LangChain в наши роли
+                    role = "user"
+                    if hasattr(msg, "type"):
+                        if msg.type == "ai": role = "assistant"
+                        elif msg.type == "system": role = "system"
+                        elif msg.type == "tool": role = "tool"
+                        elif msg.type == "human": role = "user"
+                    
+                    history.append({
+                        "role": role, 
+                        "content": getattr(msg, "content", "")
+                    })
         chat_id = state.get("chat_id")
         
         agent_result = self.reschedule_agent(message, history, chat_id=chat_id)
@@ -239,7 +305,29 @@ class MainGraph:
         message = state["message"]
         # Преобразуем messages в history для обратной совместимости с агентами
         messages = state.get("messages", [])
-        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
+        history = []
+        if messages:
+            for msg in messages:
+                # Если это словарь (старый формат)
+                if isinstance(msg, dict):
+                    history.append({
+                        "role": msg.get("role", "user"), 
+                        "content": msg.get("content", "")
+                    })
+                # Если это объект LangChain (новый формат)
+                else:
+                    # Маппинг типов LangChain в наши роли
+                    role = "user"
+                    if hasattr(msg, "type"):
+                        if msg.type == "ai": role = "assistant"
+                        elif msg.type == "system": role = "system"
+                        elif msg.type == "tool": role = "tool"
+                        elif msg.type == "human": role = "user"
+                    
+                    history.append({
+                        "role": role, 
+                        "content": getattr(msg, "content", "")
+                    })
         chat_id = state.get("chat_id")
         
         agent_result = self.view_my_booking_agent(message, history, chat_id=chat_id)
