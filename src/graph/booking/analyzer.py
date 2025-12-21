@@ -50,13 +50,13 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
 1. Service ID: Извлекай `service_id` (8 цифр) ТОЛЬКО из истории сообщений инструментов (role="tool"). НИКОГДА не придумывай ID.
 2. Service Name: Если клиент пишет название услуги (текстом, или "хочу стрижку"), верни `service_name`.
 3. СМЕНА ТЕМЫ (ВАЖНО): Если клиент меняет желание (например, хотел маникюр, теперь пишет про педикюр) — верни новое `service_name` и установи `service_id`, `master_id`, `slot_time` в null.
-4. Slot: Дата/время в формате "YYYY-MM-DD HH:MM".
+4. Slot: Дата/время в формате "YYYY-MM-DD HH:MM" (заполняй только если клиент назвал точное время)
 5. Contacts: `client_name` и `client_phone` (только цифры/+).
-6. Master: `master_id` (из tool) или `master_name`.
+6. Master: `master_id` (из tool) или `master_name`. (мастер/топ-мастер/юниор не релевантны)
 
 ВАЖНО:
 - Верни ТОЛЬКО те поля, которые изменились.
-- Если меняется услуга, ты ОБЯЗАН сбросить `service_id` и `slot_time` в null. Но если меняется услуга на ту, ID которой тебе известно - отправляй правильный ID.
+- Если меняется услуга или мастер, ты ОБЯЗАН сбросить `service_id` и `slot_time` в null. Но если меняется услуга на ту, ID которой тебе известно - отправляй правильный ID.
 
 Примеры:
 - "Хочу педикюр" (при текущем маникюре) -> {{"service_name": "педикюр", "service_id": null, "slot_time": null}}
@@ -115,7 +115,13 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
         )
         
         # Получаем ответ от LLM
-        response_content = response.choices[0].message.content.strip()
+        message = response.choices[0].message
+        if message.content is None:
+            logger.warning("Получен пустой ответ от LLM в booking_analyzer_node")
+            # Возвращаем состояние без изменений при пустом ответе
+            return {}
+        
+        response_content = message.content.strip()
         logger.debug(f"Ответ LLM от analyzer: {response_content}")
         
         # Парсим JSON из ответа

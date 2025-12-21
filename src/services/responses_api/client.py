@@ -3,10 +3,16 @@
 """
 import json
 import re
+import time
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
+from openai import InternalServerError, RateLimitError, APIError
 from .config import ResponsesAPIConfig
 from ..logger_service import logger
+
+
+# Валидные роли для OpenAI API
+VALID_ROLES = {"system", "user", "assistant", "tool"}
 
 
 class ResponsesAPIClient:
@@ -18,6 +24,9 @@ class ResponsesAPIClient:
             api_key=self.config.api_key,
             base_url=self.config.base_url
         )
+        # Настройки retry
+        self.max_retries = 3
+        self.retry_delay = 1.0  # секунды
     
     def _normalize_text(self, text: str) -> str:
         """
@@ -48,25 +57,154 @@ class ResponsesAPIClient:
         # Убираем управляющие символы, кроме стандартных (табуляция, перенос строки)
         text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
         
+        # Убираем текст, который выглядит как ответ модели (может попасть из истории)
+        # Паттерны, которые указывают на то, что это ответ модели, а не инструкция
+        model_response_patterns = [
+            r'We need to determine.*?So answer should.*',
+            r'I need to.*?So.*',
+            r'Based on.*?I should.*',
+            r'Looking at.*?The answer.*',
+        ]
+        for pattern in model_response_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE | re.DOTALL)
+        
         return text.strip()
     
-    def _normalize_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_and_normalize_role(self, role: Any) -> str:
         """
-        Нормализует сообщение для отправки в API
+        Валидирует и нормализует роль сообщения
+        
+        Args:
+            role: Роль из сообщения
+            
+        Returns:
+            Валидная роль (user, assistant, system, tool)
         """
-        normalized = {
-            "role": message.get("role", "user"),
-            "content": self._normalize_text(message.get("content", ""))
+        if not isinstance(role, str):
+            role = str(role) if role is not None else "user"
+        
+        role_lower = role.lower().strip()
+        
+        # Маппинг недопустимых ролей
+        role_mapping = {
+            "final": "assistant",  # Роль "final" не поддерживается, заменяем на assistant
+            "model": "assistant",
+            "ai": "assistant",
+            "bot": "assistant",
         }
         
-        # Сохраняем tool_calls если есть
-        if "tool_calls" in message:
-            normalized["tool_calls"] = message["tool_calls"]
+        if role_lower in role_mapping:
+            logger.warning(f"Обнаружена недопустимая роль '{role}', заменяем на '{role_mapping[role_lower]}'")
+            return role_mapping[role_lower]
         
-        # Сохраняем tool_call_id если есть
-        if "tool_call_id" in message:
-            normalized["tool_call_id"] = message["tool_call_id"]
+        # Проверяем, что роль валидная
+        if role_lower not in VALID_ROLES:
+            logger.error(f"Обнаружена неизвестная роль '{role}', заменяем на 'user'")
+            return "user"
         
+        return role_lower
+    
+    def _validate_tool_calls(self, tool_calls: Any) -> Optional[List[Dict[str, Any]]]:
+        """
+        Валидирует и нормализует tool_calls
+        
+        Args:
+            tool_calls: tool_calls из сообщения
+            
+        Returns:
+            Нормализованный список tool_calls или None
+        """
+        if not tool_calls:
+            return None
+        
+        if not isinstance(tool_calls, list):
+            logger.warning(f"tool_calls не является списком: {type(tool_calls)}, пропускаем")
+            return None
+        
+        normalized_calls = []
+        for tc in tool_calls:
+            try:
+                # Если это уже словарь
+                if isinstance(tc, dict):
+                    # Проверяем обязательные поля
+                    if "id" not in tc or "function" not in tc:
+                        logger.warning(f"tool_call без обязательных полей: {tc}, пропускаем")
+                        continue
+                    
+                    # Нормализуем структуру
+                    normalized_tc = {
+                        "id": str(tc.get("id", "")),
+                        "type": tc.get("type", "function"),
+                        "function": {
+                            "name": str(tc.get("function", {}).get("name", "")),
+                            "arguments": str(tc.get("function", {}).get("arguments", "{}"))
+                        }
+                    }
+                    normalized_calls.append(normalized_tc)
+                
+                # Если это объект SDK
+                elif hasattr(tc, 'id') and hasattr(tc, 'function'):
+                    normalized_tc = {
+                        "id": str(tc.id),
+                        "type": "function",
+                        "function": {
+                            "name": str(tc.function.name),
+                            "arguments": str(tc.function.arguments)
+                        }
+                    }
+                    normalized_calls.append(normalized_tc)
+                else:
+                    logger.warning(f"Неизвестный формат tool_call: {type(tc)}, пропускаем")
+                    
+            except Exception as e:
+                logger.error(f"Ошибка при нормализации tool_call: {e}, пропускаем")
+                continue
+        
+        return normalized_calls if normalized_calls else None
+    
+    def _normalize_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Нормализует сообщение для отправки в API
+        
+        Returns:
+            Нормализованное сообщение или None, если сообщение невалидно
+        """
+        # Валидируем и нормализуем роль
+        role = self._validate_and_normalize_role(message.get("role", "user"))
+        
+        # Пропускаем system сообщения (они уже добавлены как system prompt)
+        if role == "system":
+            return None
+        
+        # Нормализуем content
+        content = self._normalize_text(message.get("content", ""))
+        
+        # Для tool сообщений требуется tool_call_id
+        if role == "tool":
+            tool_call_id = message.get("tool_call_id")
+            if not tool_call_id:
+                logger.warning("Tool сообщение без tool_call_id, пропускаем")
+                return None
+            
+            return {
+                "role": "tool",
+                "tool_call_id": str(tool_call_id),
+                "content": content
+            }
+        
+        # Для assistant сообщений
+        normalized = {
+            "role": role,
+            "content": content
+        }
+        
+        # Валидируем и добавляем tool_calls если есть (только для assistant)
+        if role == "assistant" and "tool_calls" in message:
+            tool_calls = self._validate_tool_calls(message["tool_calls"])
+            if tool_calls:
+                normalized["tool_calls"] = tool_calls
+        
+        # Для user сообщений просто content
         return normalized
     
     def create_response(
@@ -85,6 +223,68 @@ class ResponsesAPIClient:
             # Нормализуем instructions
             normalized_instructions = self._normalize_text(instructions)
             
+            # Дополнительная валидация: проверяем, что инструкции не пустые и не содержат явных ответов модели
+            if not normalized_instructions or len(normalized_instructions.strip()) == 0:
+                logger.warning("Получены пустые инструкции, используем дефолтные")
+                normalized_instructions = "You are a helpful assistant."
+            
+            # Проверяем, что инструкции не выглядят как ответ модели
+            # Если инструкции содержат фразы, характерные для ответов модели, это проблема
+            suspicious_patterns = [
+                r"We need to determine which agent",
+                r"I need to.*?So.*?answer",
+                r"Based on.*?I should",
+                r"Looking at.*?The answer",
+                r"So answer should",
+                r"User wants to.*?So they are trying",
+            ]
+            
+            # Проверяем весь текст инструкций на наличие подозрительных паттернов
+            for pattern in suspicious_patterns:
+                if re.search(pattern, normalized_instructions, re.IGNORECASE):
+                    logger.error(f"Обнаружен подозрительный текст в инструкциях (похож на ответ модели): паттерн '{pattern}'")
+                    # Пытаемся найти, где заканчивается подозрительный текст
+                    # Ищем начало инструкций (обычно это "Прочитай", "Ты —", "You are" и т.д.)
+                    instruction_markers = [
+                        "Прочитай",
+                        "Ты —",
+                        "You are",
+                        "Твоя задача",
+                        "Your task",
+                        "Определи",
+                        "Determine",
+                    ]
+                    
+                    # Ищем первое вхождение маркера инструкций
+                    found_marker = False
+                    for marker in instruction_markers:
+                        marker_pos = normalized_instructions.find(marker)
+                        if marker_pos != -1:
+                            # Обрезаем все до маркера
+                            normalized_instructions = normalized_instructions[marker_pos:].strip()
+                            found_marker = True
+                            logger.warning(f"Обрезан подозрительный текст до маркера '{marker}'")
+                            break
+                    
+                    if not found_marker:
+                        # Если не нашли маркер, пытаемся найти первое предложение, которое выглядит как инструкция
+                        # Ищем предложения, которые начинаются с заглавной буквы и содержат глаголы действия
+                        sentences = re.split(r'[.!?]\s+', normalized_instructions)
+                        valid_sentences = []
+                        for sentence in sentences:
+                            sentence = sentence.strip()
+                            if sentence and not any(re.search(p, sentence, re.IGNORECASE) for p in suspicious_patterns):
+                                valid_sentences.append(sentence)
+                        
+                        if valid_sentences:
+                            normalized_instructions = '. '.join(valid_sentences).strip()
+                            logger.warning("Удалены предложения с подозрительными паттернами из инструкций")
+                        else:
+                            logger.error("Не удалось очистить инструкции от подозрительного текста, используем дефолтные")
+                            normalized_instructions = "You are a helpful assistant."
+                    
+                    break
+            
             # Формируем сообщения
             messages = []
             
@@ -96,11 +296,23 @@ class ResponsesAPIClient:
             
             # History - нормализуем каждое сообщение
             if input_messages:
-                for msg in input_messages:
-                    normalized_msg = self._normalize_message(msg)
-                    # Пропускаем пустые сообщения
-                    if normalized_msg.get("content") or normalized_msg.get("tool_calls"):
+                for idx, msg in enumerate(input_messages):
+                    try:
+                        normalized_msg = self._normalize_message(msg)
+                        # Пропускаем None (невалидные сообщения)
+                        if normalized_msg is None:
+                            continue
+                        
+                        # Пропускаем пустые сообщения (кроме tool, которые могут быть без content)
+                        if normalized_msg.get("role") != "tool":
+                            if not normalized_msg.get("content") and not normalized_msg.get("tool_calls"):
+                                logger.debug(f"Пропущено пустое сообщение на позиции {idx}")
+                                continue
+                        
                         messages.append(normalized_msg)
+                    except Exception as e:
+                        logger.warning(f"Ошибка при нормализации сообщения на позиции {idx}: {e}, пропускаем")
+                        continue
             
             # Параметры
             params = {
@@ -125,12 +337,71 @@ class ResponsesAPIClient:
             
             logger.debug(f"Sending request to OpenAI: {len(messages)} messages")
             logger.debug(f"Instructions length: {len(normalized_instructions)} chars")
+            logger.debug(f"System message (first 200 chars): {normalized_instructions[:200]}")
             
-            response = self.client.chat.completions.create(**params)
+            # Логируем первые несколько сообщений для диагностики
+            if messages:
+                logger.debug(f"First message role: {messages[0].get('role')}, content length: {len(messages[0].get('content', ''))}")
+                if len(messages) > 1:
+                    logger.debug(f"Second message role: {messages[1].get('role')}, content length: {len(messages[1].get('content', ''))}")
             
-            return response
+            # Retry механизм для временных ошибок
+            last_exception = None
+            for attempt in range(self.max_retries):
+                try:
+                    response = self.client.chat.completions.create(**params)
+                    return response
+                    
+                except (InternalServerError, RateLimitError) as e:
+                    last_exception = e
+                    error_code = getattr(e, 'status_code', None) or getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+                    
+                    # Проверяем, стоит ли повторять
+                    if attempt < self.max_retries - 1:
+                        # Для 500, 502, 503, 429 делаем retry
+                        if error_code in [500, 502, 503, 429] or "500" in str(e) or "502" in str(e) or "503" in str(e) or "429" in str(e):
+                            delay = self.retry_delay * (2 ** attempt)  # Exponential backoff
+                            logger.warning(f"Временная ошибка API (попытка {attempt + 1}/{self.max_retries}): {e}. Повтор через {delay}с")
+                            time.sleep(delay)
+                            continue
+                    
+                    # Если это ошибка с токенами structured outputs, пробуем без tools
+                    if "token" in str(e).lower() and "2000" in str(e) and tools:
+                        logger.warning(f"Ошибка structured outputs токенов, пробуем без tools: {e}")
+                        try:
+                            params_without_tools = params.copy()
+                            params_without_tools.pop("tools", None)
+                            response = self.client.chat.completions.create(**params_without_tools)
+                            logger.warning("Успешно выполнен запрос без tools после ошибки токенов")
+                            return response
+                        except Exception as e2:
+                            logger.error(f"Ошибка при запросе без tools: {e2}")
+                    
+                    # Если не удалось повторить, пробрасываем исключение
+                    raise
+                    
+                except APIError as e:
+                    # Для других API ошибок не делаем retry
+                    logger.error(f"API ошибка: {e}")
+                    raise
+                    
+                except Exception as e:
+                    # Для неизвестных ошибок пробуем еще раз, если это первая попытка
+                    if attempt < self.max_retries - 1 and "token" not in str(e).lower():
+                        delay = self.retry_delay * (2 ** attempt)
+                        logger.warning(f"Неизвестная ошибка (попытка {attempt + 1}/{self.max_retries}): {e}. Повтор через {delay}с")
+                        time.sleep(delay)
+                        continue
+                    raise
+            
+            # Если все попытки исчерпаны
+            if last_exception:
+                raise last_exception
             
         except Exception as e:
             logger.error(f"Ошибка при создании запроса к OpenAI API: {e}", exc_info=True)
             logger.error(f"Instructions (first 500 chars): {instructions[:500] if instructions else 'None'}")
+            logger.error(f"Messages count: {len(messages) if 'messages' in locals() else 0}")
+            if 'messages' in locals() and messages:
+                logger.error(f"First message: role={messages[0].get('role')}, has_content={bool(messages[0].get('content'))}, has_tool_calls={bool(messages[0].get('tool_calls'))}")
             raise

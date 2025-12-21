@@ -71,10 +71,28 @@ class ConversationRepository:
         Returns:
             ID созданного сообщения
         """
-        # Валидация роли
-        valid_roles = ['user', 'assistant', 'tool', 'system']
-        if role not in valid_roles:
+        # Валидация и нормализация роли
+        if not isinstance(role, str):
+            role = str(role) if role is not None else "user"
+        
+        role_lower = role.lower().strip()
+        valid_roles = {'user', 'assistant', 'tool', 'system'}
+        
+        # Маппинг недопустимых ролей
+        role_mapping = {
+            'final': 'assistant',
+            'model': 'assistant',
+            'ai': 'assistant',
+            'bot': 'assistant',
+        }
+        
+        if role_lower in role_mapping:
+            logger.warning(f"Обнаружена недопустимая роль '{role}' при сохранении, заменяем на '{role_mapping[role_lower]}'")
+            role = role_mapping[role_lower]
+        elif role_lower not in valid_roles:
             raise ValueError(f"Недопустимая роль: {role}. Допустимые роли: {valid_roles}")
+        else:
+            role = role_lower
         
         query = """
             INSERT INTO public.messages (conversation_id, role, content, created_at)
@@ -125,10 +143,34 @@ class ConversationRepository:
         results = self.pg_client.execute_query(query, (conversation_id, limit), fetch=True)
         
         messages = []
+        valid_roles = {'user', 'assistant', 'tool', 'system'}
+        role_mapping = {
+            'final': 'assistant',
+            'model': 'assistant',
+            'ai': 'assistant',
+            'bot': 'assistant',
+        }
+        
         for row in results:
+            role = row[1]
+            content = row[2] or ""
+            
+            # Валидация и нормализация роли
+            role_lower = role.lower().strip() if role else "user"
+            
+            # Маппинг недопустимых ролей
+            if role_lower in role_mapping:
+                logger.warning(f"Обнаружена недопустимая роль '{role}' в БД, заменяем на '{role_mapping[role_lower]}'")
+                role = role_mapping[role_lower]
+            elif role_lower not in valid_roles:
+                logger.warning(f"Обнаружена неизвестная роль '{role}' в БД, заменяем на 'user'")
+                role = "user"
+            else:
+                role = role_lower
+            
             message = {
-                "role": row[1],
-                "content": row[2],
+                "role": role,
+                "content": content,
             }
             
             messages.append(message)

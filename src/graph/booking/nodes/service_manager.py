@@ -14,11 +14,51 @@ from ....agents.tools.get_categories.tool import GetCategories
 from ....agents.tools.find_service.tool import FindService
 
 
-SYSTEM_PROMPT = """Ты — AI-администратор салона красоты LookTown. Сейчас этап выбора услуги.
+def _build_system_prompt(
+    service_id: Optional[int],
+    service_name: Optional[str],
+    master_id: Optional[int],
+    master_name: Optional[str]
+) -> str:
+    """
+    Формирует системный промпт для узла service_manager с контекстом
+    
+    Args:
+        service_id: ID услуги (если есть)
+        service_name: Название услуги (если есть)
+        master_id: ID мастера (если есть)
+        master_name: Имя мастера (если есть)
+        
+    Returns:
+        Системный промпт для LLM
+    """
+    # Формируем секцию КОНТЕКСТ с заполненными полями
+    context_parts = []
+    
+    if service_id is not None:
+        context_parts.append(f"- Выбранная услуга ID: {service_id}")
+    
+    if service_name:
+        context_parts.append(f"- Выбранная услуга: {service_name}")
+    
+    if master_id is not None:
+        master_info = f"{master_id}"
+        if master_name:
+            master_info += f" ({master_name})"
+        context_parts.append(f"- Выбранный мастер: {master_info}")
+    elif master_name:
+        context_parts.append(f"- Выбранный мастер: {master_name}")
+    
+    # Формируем контекстную секцию
+    context_section = ""
+    if context_parts:
+        context_section = "\nКОНТЕКСТ:\n" + "\n".join(context_parts) + "\n"
+    
+    prompt = f"""Ты — AI-администратор салона красоты LookTown. Сейчас этап выбора услуги.
 Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица, здоровайся с клиентом, но только один раз.
 
 ТВОЯ ЕДИНСТВЕННАЯ ЗАДАЧА: Помочь клиенту выбрать услугу, чтобы мы получили её ID. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ КЛИЕНТА О ВРЕМЕНИ ДЛЯ ЗАПИСИ, КОНТАКТНЫХ ДАННЫХ ИЛИ ГОВОРИТЬ ЧТО ТЫ ЕГО ЗАПИСАЛ НА УСЛУГУ.
-
+Твой главный источник данных: {context_section}
 ИНСТРУКЦИЯ:
 1.1 Если клиент просто выразил желание записаться или узнать услуги салона, вызови `GetCategories` и отправь полный список из инструмента.  
 1.2 Если клиент сказал на какую услугу хочет записаться используй `FindService`.
@@ -26,11 +66,14 @@ SYSTEM_PROMPT = """Ты — AI-администратор салона крас�
 
 ВАЖНО:
 - Не придумывай услуги и цены. Бери только из инструментов. 
-- Твоя цель — вывести список
+- Всегда вызывай инструмент с заполнение необходимых полей.
 - Не пиши клиенту ID
 - Сохраняй список нумерованным точо также как получаешь из инструмента.
 - Узнать детали об услуге (в т.ч. кто из мастеров её делает - ViewServices)
- """
+- Если клиент решил сменить услугу или мастера - начинай сначала (не считая приветствия) по инструкции - вызывай инструменты снова.
+"""
+    
+    return prompt
 
 
 def service_manager_node(state: ConversationState) -> ConversationState:
@@ -59,6 +102,19 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         logger.info(f"Услуга уже выбрана (service_id={service_id}), пропускаем service_manager")
         return {}
     
+    # Получаем данные для контекста
+    service_name = booking_state.get("service_name")
+    master_id = booking_state.get("master_id")
+    master_name = booking_state.get("master_name")
+    
+    # Формируем системный промпт с контекстом
+    system_prompt = _build_system_prompt(
+        service_id=service_id,
+        service_name=service_name,
+        master_id=master_id,
+        master_name=master_name
+    )
+    
     # Получаем сообщение пользователя и историю
     user_message = state.get("message", "")
     history = state.get("history") or []
@@ -75,7 +131,7 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         # Создаем orchestrator
         config = ResponsesAPIConfig()
         orchestrator = ResponsesOrchestrator(
-            instructions=SYSTEM_PROMPT,
+            instructions=system_prompt,
             tools_registry=tools_registry,
             config=config
         )

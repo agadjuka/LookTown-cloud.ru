@@ -49,54 +49,99 @@ class ResponsesOrchestrator:
         # Включаем всю историю из PostgreSQL
         messages = []
         if history:
-            for msg in history:
-                # Пропускаем system сообщения (например, "Tools used: ...")
-                if msg.get("role") == "system":
-                    continue
-                
-                # Нормализуем сообщение для API
-                normalized_msg = {
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content") or ""  # content должен быть строкой, не None
-                }
-                
-                # Если есть tool_calls, добавляем их (только если это assistant сообщение)
-                if msg.get("role") == "assistant" and msg.get("tool_calls"):
-                    # Проверяем, что tool_calls в правильном формате
-                    tool_calls = msg.get("tool_calls")
-                    if isinstance(tool_calls, list):
-                        # Если это уже список словарей, используем как есть
-                        # Если это объекты SDK, нужно сериализовать
-                        try:
-                            # Пытаемся проверить, что это уже словари
-                            if tool_calls and isinstance(tool_calls[0], dict):
-                                normalized_msg["tool_calls"] = tool_calls
-                            else:
-                                # Сериализуем объекты SDK в словари
-                                normalized_msg["tool_calls"] = [
-                                    {
-                                        "id": tc.id if hasattr(tc, 'id') else tc.get("id"),
-                                        "type": "function",
-                                        "function": {
-                                            "name": tc.function.name if hasattr(tc, 'function') else tc.get("function", {}).get("name"),
-                                            "arguments": tc.function.arguments if hasattr(tc, 'function') else tc.get("function", {}).get("arguments")
-                                        }
-                                    }
-                                    for tc in tool_calls
-                                ]
-                        except Exception as e:
-                            logger.warning(f"Ошибка при обработке tool_calls из истории: {e}")
-                            # Пропускаем tool_calls, если не удалось обработать
-                
-                # Если это tool сообщение, добавляем tool_call_id
-                if msg.get("role") == "tool":
-                    if "tool_call_id" in msg:
-                        normalized_msg["tool_call_id"] = msg["tool_call_id"]
-                    else:
-                        # Пропускаем tool сообщения без tool_call_id
+            for idx, msg in enumerate(history):
+                try:
+                    role = msg.get("role", "user")
+                    
+                    # Пропускаем system сообщения (например, "Tools used: ...", "EXTRACTED_INFO: ...")
+                    if role == "system":
+                        logger.debug(f"Пропущено system сообщение из истории: {str(msg.get('content', ''))[:100]}")
                         continue
+                    
+                    # Валидируем роль (включая обработку "final" и других недопустимых ролей)
+                    valid_roles = ["user", "assistant", "tool"]
+                    if role not in valid_roles:
+                        # Маппинг недопустимых ролей
+                        role_mapping = {
+                            "final": "assistant",
+                            "model": "assistant",
+                            "ai": "assistant",
+                            "bot": "assistant",
+                        }
+                        if role.lower() in role_mapping:
+                            logger.warning(f"Обнаружена недопустимая роль '{role}' в истории (позиция {idx}), заменяем на '{role_mapping[role.lower()]}'")
+                            role = role_mapping[role.lower()]
+                            msg = msg.copy()
+                            msg["role"] = role
+                        else:
+                            logger.warning(f"Обнаружен неожиданный role в истории: {role} (позиция {idx}), пропускаем сообщение")
+                            continue
                 
-                messages.append(normalized_msg)
+                    # Нормализуем сообщение для API
+                    normalized_msg = {
+                        "role": role,
+                        "content": str(msg.get("content") or "")  # content должен быть строкой, не None
+                    }
+                    
+                    # Если есть tool_calls, добавляем их (только если это assistant сообщение)
+                    if role == "assistant" and msg.get("tool_calls"):
+                        # Проверяем, что tool_calls в правильном формате
+                        tool_calls = msg.get("tool_calls")
+                        if isinstance(tool_calls, list) and tool_calls:
+                            try:
+                                # Пытаемся проверить, что это уже словари
+                                if isinstance(tool_calls[0], dict):
+                                    # Валидируем каждое tool_call
+                                    valid_tool_calls = []
+                                    for tc in tool_calls:
+                                        if isinstance(tc, dict) and "id" in tc and "function" in tc:
+                                            valid_tool_calls.append(tc)
+                                        else:
+                                            logger.warning(f"Пропущен невалидный tool_call в истории: {tc}")
+                                    if valid_tool_calls:
+                                        normalized_msg["tool_calls"] = valid_tool_calls
+                                else:
+                                    # Сериализуем объекты SDK в словари
+                                    normalized_tool_calls = []
+                                    for tc in tool_calls:
+                                        try:
+                                            tc_dict = {
+                                                "id": str(tc.id if hasattr(tc, 'id') else tc.get("id", "")),
+                                                "type": "function",
+                                                "function": {
+                                                    "name": str(tc.function.name if hasattr(tc, 'function') else tc.get("function", {}).get("name", "")),
+                                                    "arguments": str(tc.function.arguments if hasattr(tc, 'function') else tc.get("function", {}).get("arguments", "{}"))
+                                                }
+                                            }
+                                            normalized_tool_calls.append(tc_dict)
+                                        except Exception as e:
+                                            logger.warning(f"Ошибка при сериализации tool_call: {e}, пропускаем")
+                                    if normalized_tool_calls:
+                                        normalized_msg["tool_calls"] = normalized_tool_calls
+                            except Exception as e:
+                                logger.warning(f"Ошибка при обработке tool_calls из истории (позиция {idx}): {e}")
+                                # Пропускаем tool_calls, если не удалось обработать
+                    
+                    # Если это tool сообщение, добавляем tool_call_id
+                    if role == "tool":
+                        tool_call_id = msg.get("tool_call_id")
+                        if tool_call_id:
+                            normalized_msg["tool_call_id"] = str(tool_call_id)
+                        else:
+                            # Пропускаем tool сообщения без tool_call_id
+                            logger.debug(f"Пропущено tool сообщение без tool_call_id (позиция {idx})")
+                            continue
+                    
+                    # Пропускаем пустые сообщения (кроме tool)
+                    if role != "tool" and not normalized_msg.get("content") and not normalized_msg.get("tool_calls"):
+                        logger.debug(f"Пропущено пустое сообщение (позиция {idx}, роль: {role})")
+                        continue
+                    
+                    messages.append(normalized_msg)
+                    
+                except Exception as e:
+                    logger.warning(f"Ошибка при обработке сообщения из истории (позиция {idx}): {e}, пропускаем")
+                    continue
         
         # Если история пустая или последнее сообщение не совпадает с текущим,
         # добавляем текущее сообщение
