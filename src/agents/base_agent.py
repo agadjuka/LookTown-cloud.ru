@@ -58,7 +58,7 @@ class BaseAgent:
         Выполнение запроса к агенту
         
         :param message: Сообщение для агента
-        :param history: История сообщений из PostgreSQL (последние N сообщений)
+        :param history: История сообщений (преобразованная из LangGraph messages)
         :param chat_id: ID чата в Telegram (для передачи в инструменты)
         :return: Ответ агента
         """

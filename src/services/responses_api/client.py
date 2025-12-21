@@ -57,17 +57,6 @@ class ResponsesAPIClient:
         # Убираем управляющие символы, кроме стандартных (табуляция, перенос строки)
         text = re.sub(r'[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]', '', text)
         
-        # Убираем текст, который выглядит как ответ модели (может попасть из истории)
-        # Паттерны, которые указывают на то, что это ответ модели, а не инструкция
-        model_response_patterns = [
-            r'We need to determine.*?So answer should.*',
-            r'I need to.*?So.*',
-            r'Based on.*?I should.*',
-            r'Looking at.*?The answer.*',
-        ]
-        for pattern in model_response_patterns:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE | re.DOTALL)
-        
         return text.strip()
     
     def _validate_and_normalize_role(self, role: Any) -> str:
@@ -223,67 +212,10 @@ class ResponsesAPIClient:
             # Нормализуем instructions
             normalized_instructions = self._normalize_text(instructions)
             
-            # Дополнительная валидация: проверяем, что инструкции не пустые и не содержат явных ответов модели
+            # Проверяем, что инструкции не пустые
             if not normalized_instructions or len(normalized_instructions.strip()) == 0:
                 logger.warning("Получены пустые инструкции, используем дефолтные")
                 normalized_instructions = "You are a helpful assistant."
-            
-            # Проверяем, что инструкции не выглядят как ответ модели
-            # Если инструкции содержат фразы, характерные для ответов модели, это проблема
-            suspicious_patterns = [
-                r"We need to determine which agent",
-                r"I need to.*?So.*?answer",
-                r"Based on.*?I should",
-                r"Looking at.*?The answer",
-                r"So answer should",
-                r"User wants to.*?So they are trying",
-            ]
-            
-            # Проверяем весь текст инструкций на наличие подозрительных паттернов
-            for pattern in suspicious_patterns:
-                if re.search(pattern, normalized_instructions, re.IGNORECASE):
-                    logger.error(f"Обнаружен подозрительный текст в инструкциях (похож на ответ модели): паттерн '{pattern}'")
-                    # Пытаемся найти, где заканчивается подозрительный текст
-                    # Ищем начало инструкций (обычно это "Прочитай", "Ты —", "You are" и т.д.)
-                    instruction_markers = [
-                        "Прочитай",
-                        "Ты —",
-                        "You are",
-                        "Твоя задача",
-                        "Your task",
-                        "Определи",
-                        "Determine",
-                    ]
-                    
-                    # Ищем первое вхождение маркера инструкций
-                    found_marker = False
-                    for marker in instruction_markers:
-                        marker_pos = normalized_instructions.find(marker)
-                        if marker_pos != -1:
-                            # Обрезаем все до маркера
-                            normalized_instructions = normalized_instructions[marker_pos:].strip()
-                            found_marker = True
-                            logger.warning(f"Обрезан подозрительный текст до маркера '{marker}'")
-                            break
-                    
-                    if not found_marker:
-                        # Если не нашли маркер, пытаемся найти первое предложение, которое выглядит как инструкция
-                        # Ищем предложения, которые начинаются с заглавной буквы и содержат глаголы действия
-                        sentences = re.split(r'[.!?]\s+', normalized_instructions)
-                        valid_sentences = []
-                        for sentence in sentences:
-                            sentence = sentence.strip()
-                            if sentence and not any(re.search(p, sentence, re.IGNORECASE) for p in suspicious_patterns):
-                                valid_sentences.append(sentence)
-                        
-                        if valid_sentences:
-                            normalized_instructions = '. '.join(valid_sentences).strip()
-                            logger.warning("Удалены предложения с подозрительными паттернами из инструкций")
-                        else:
-                            logger.error("Не удалось очистить инструкции от подозрительного текста, используем дефолтные")
-                            normalized_instructions = "You are a helpful assistant."
-                    
-                    break
             
             # Формируем сообщения
             messages = []

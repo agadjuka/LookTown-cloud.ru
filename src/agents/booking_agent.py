@@ -136,18 +136,43 @@ class BookingAgent(BaseAgent):
         
         Args:
             message: Сообщение пользователя
-            history: История сообщений
+            history: История сообщений (преобразованная из LangGraph messages)
             chat_id: ID чата
             
         Returns:
             Ответ агента (строка)
         """
+        # Преобразуем history в messages для новой структуры
+        from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+        
+        messages = []
+        if history:
+            for msg in history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                
+                if role == "user":
+                    messages.append(HumanMessage(content=content))
+                elif role == "assistant":
+                    ai_msg = AIMessage(content=content)
+                    if msg.get("tool_calls"):
+                        ai_msg.tool_calls = msg.get("tool_calls")
+                    messages.append(ai_msg)
+                elif role == "tool":
+                    tool_msg = ToolMessage(
+                        content=content,
+                        tool_call_id=msg.get("tool_call_id", "")
+                    )
+                    messages.append(tool_msg)
+        
+        # Добавляем текущее сообщение
+        messages.append(HumanMessage(content=message))
+        
         # Создаем ConversationState из параметров
         state: ConversationState = {
+            "messages": messages,
             "message": message,
             "chat_id": chat_id,
-            "conversation_id": None,
-            "history": history,
             "stage": None,
             "extracted_info": None,
             "answer": "",

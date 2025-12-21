@@ -7,10 +7,9 @@ from langgraph.graph.message import AnyMessage, add_messages
 
 class ConversationState(TypedDict):
     """Состояние основного графа диалога"""
-    messages: Annotated[list[AnyMessage], add_messages]  # История сообщений (управляется LangGraph)
+    messages: Annotated[list[AnyMessage], add_messages]  # История сообщений (управляется LangGraph через checkpointer)
     message: str                                          # Исходное сообщение пользователя (для обратной совместимости)
     chat_id: Optional[str]                                # ID чата в Telegram
-    conversation_id: Optional[str]                       # ID диалога в PostgreSQL
     stage: Optional[str]                                  # Определённая стадия диалога
     extracted_info: Optional[dict]                       # Извлечённая информация
     answer: str                                           # Финальный ответ пользователю

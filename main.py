@@ -1,6 +1,12 @@
 import os
 import sys
 
+# Настройка event loop policy для Windows (нужно для psycopg)
+# Должно быть ДО любых импортов, которые используют asyncio
+if sys.platform == 'win32':
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # Ранние логи ДО любых импортов (в stdout для Yandex Cloud)
 print("=" * 60, flush=True)
 print("🚀 НАЧАЛО ИМПОРТА МОДУЛЕЙ", flush=True)
@@ -74,6 +80,26 @@ async def startup_event():
     logger.info("╔═══════════════════════════════════════════════════════════")
     logger.info("║ 🚀 Приложение запускается...")
     logger.info("╚═══════════════════════════════════════════════════════════")
+    
+    # Инициализируем таблицы для LangGraph Checkpointer
+    # Это должно быть выполнено ДО начала обработки сообщений
+    try:
+        from src.storage.checkpointer import initialize_checkpointer_tables
+        print("🔧 Инициализация таблиц для LangGraph Checkpointer...", flush=True)
+        await initialize_checkpointer_tables()
+        print("✅ Таблицы для LangGraph Checkpointer инициализированы", flush=True)
+    except Exception as e:
+        error_str = str(e)
+        # Игнорируем только известные проблемы (CONCURRENTLY, already exists)
+        if "CONCURRENTLY" in error_str or "already exists" in error_str.lower():
+            print(f"⚠️ Предупреждение при инициализации таблиц checkpointer: {e}", flush=True)
+            logger.warning(f"Предупреждение при инициализации таблиц checkpointer: {e}")
+            # Продолжаем работу, так как таблицы могут уже существовать
+        else:
+            # Для других ошибок - критическая ошибка, не продолжаем
+            print(f"❌ КРИТИЧЕСКАЯ ОШИБКА при инициализации таблиц checkpointer: {e}", flush=True)
+            logger.error(f"КРИТИЧЕСКАЯ ОШИБКА при инициализации таблиц checkpointer: {e}")
+            raise
     
     # В Yandex Cloud Serverless Containers сервисный аккаунт используется автоматически
     # через метаданные (revision-service-account-id), файл key.json не требуется.

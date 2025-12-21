@@ -5,6 +5,12 @@ Wrapper скрипт для запуска uvicorn с гарантированн
 import os
 import sys
 
+# Настройка event loop policy для Windows (нужно для psycopg)
+# Должно быть ДО любых импортов, которые используют asyncio
+if sys.platform == 'win32':
+    import asyncio
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 # КРИТИЧНО: Все логи должны идти в stdout БЕЗ буферизации
 # Отключаем буферизацию для немедленного вывода
 if hasattr(sys.stdout, 'reconfigure'):
