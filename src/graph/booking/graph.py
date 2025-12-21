@@ -18,26 +18,10 @@ def _booking_substate_to_conversation_state(
     booking_state: BookingSubState,
     conversation_state: ConversationState
 ) -> ConversationState:
-    """
-    Преобразует BookingSubState в ConversationState для передачи в узлы
-    
-    Args:
-        booking_state: Состояние подграфа бронирования
-        conversation_state: Базовое состояние диалога (для message, history, chat_id и т.д.)
-        
-    Returns:
-        ConversationState с booking данными в extracted_info
-    """
-    # Создаем extracted_info с booking данными
-    extracted_info = conversation_state.get("extracted_info") or {}
-    extracted_info = extracted_info.copy()
+    """Преобразует BookingSubState в ConversationState для передачи в узлы"""
+    extracted_info = (conversation_state.get("extracted_info") or {}).copy()
     extracted_info["booking"] = dict(booking_state)
-    
-    # Создаем полное ConversationState
-    return {
-        **conversation_state,
-        "extracted_info": extracted_info
-    }
+    return {**conversation_state, "extracted_info": extracted_info}
 
 
 def _conversation_state_to_booking_substate(
@@ -45,39 +29,16 @@ def _conversation_state_to_booking_substate(
     current_booking_state: BookingSubState
 ) -> BookingSubState:
     """
-    Извлекает BookingSubState из ConversationState после выполнения узла
-    
-    Критические поля (service_id, slot_time, master_id) обновляются даже если значение None
-    (для поддержки явного сброса при смене темы).
-    Остальные поля обновляются только если значение не None.
-    
-    Args:
-        conversation_state: Состояние после выполнения узла
-        current_booking_state: Текущее состояние бронирования (базовые значения)
-        
-    Returns:
-        Обновленное BookingSubState
+    Извлекает BookingSubState из ConversationState после выполнения узла.
+    Критические поля обновляются даже если значение None (для поддержки явного сброса при смене темы).
     """
-    # Извлекаем booking данные из extracted_info
-    extracted_info = conversation_state.get("extracted_info") or {}
-    booking_data = extracted_info.get("booking", {})
-    
-    # Объединяем с текущим состоянием
+    booking_data = (conversation_state.get("extracted_info") or {}).get("booking", {})
     updated_state = dict(current_booking_state)
-    
-    # Критические поля, которые могут быть явно сброшены в None
     critical_fields = {"service_id", "slot_time", "master_id", "master_name", "slot_time_verified"}
     
     for key, value in booking_data.items():
-        # Для критических полей обновляем даже если значение None (явный сброс)
-        if key in critical_fields:
+        if key in critical_fields or (value is not None and value != ""):
             updated_state[key] = value
-        # Для остальных полей обновляем только если значение не None и не пустое
-        elif value is not None and value != "":
-            updated_state[key] = value
-        # Если значение None в booking_data для некритических полей, оставляем текущее значение
-    
-    logger.debug(f"_conversation_state_to_booking_substate: current={current_booking_state}, booking_data={booking_data}, result={updated_state}")
     
     return updated_state
 
@@ -115,22 +76,13 @@ def _create_booking_state_adapter(original_node):
         # Вызываем оригинальный узел
         result = original_node(full_conversation_state)
         
-        # КРИТИЧНО: Правильно объединяем messages через add_messages логику
-        # Если в result есть messages, добавляем их к существующим (не заменяем!)
+        # Объединяем messages: существующие + новые (add_messages reducer сделает это автоматически)
         existing_messages = full_conversation_state.get("messages", [])
         new_messages = result.get("messages", [])
-        
-        # Объединяем messages: существующие + новые (add_messages логика)
-        if new_messages:
-            # Используем add_messages reducer логику: добавляем новые к существующим
-            combined_messages = list(existing_messages) + list(new_messages)
-        else:
-            combined_messages = existing_messages
+        combined_messages = list(existing_messages) + list(new_messages) if new_messages else existing_messages
         
         # Обновляем conversation_state с результатами узла
-        updated_conversation_state = {**full_conversation_state, **result}
-        # КРИТИЧНО: Устанавливаем объединенные messages
-        updated_conversation_state["messages"] = combined_messages
+        updated_conversation_state = {**full_conversation_state, **result, "messages": combined_messages}
         
         # Извлекаем обновленное BookingSubState
         updated_booking_state = _conversation_state_to_booking_substate(

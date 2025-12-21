@@ -53,10 +53,7 @@ class BookingAgent(BaseAgent):
             # Не кэшируем граф, так как checkpointer привязан к пулу, который может быть закрыт
             booking_graph = create_booking_graph(checkpointer=checkpointer)
             # Извлекаем текущее состояние бронирования из extracted_info
-            extracted_info = state.get("extracted_info") or {}
-            booking_data = extracted_info.get("booking", {})
-            
-            logger.debug(f"Текущее booking_data из extracted_info: {booking_data}")
+            booking_data = (state.get("extracted_info") or {}).get("booking", {})
             
             # Создаем начальное BookingSubState
             booking_state: BookingSubState = {
@@ -69,11 +66,6 @@ class BookingAgent(BaseAgent):
                 "client_phone": booking_data.get("client_phone"),
                 "is_finalized": booking_data.get("is_finalized", False)
             }
-            
-            logger.debug(f"Начальное booking_state для графа: {booking_state}")
-            
-            # КРИТИЧНО: Проверяем, что messages передаются в booking граф
-            messages = state.get("messages", [])
             
             # Создаем состояние для графа (с booking и conversation)
             graph_state = {
@@ -102,45 +94,23 @@ class BookingAgent(BaseAgent):
             # LangGraph автоматически обработает синхронный вызов с асинхронным checkpointer
             result_state = booking_graph.invoke(graph_state, config=config)
             
-            # Извлекаем обновленное состояние бронирования
+            # Извлекаем обновленное состояние
             updated_booking_state = result_state.get("booking", booking_state)
-            
-            logger.debug(f"Обновленное booking_state из графа: {updated_booking_state}")
-            
-            # Извлекаем обновленное состояние диалога (с answer и другими полями)
             updated_conversation_state = result_state.get("conversation", state)
             
             # Обновляем extracted_info с новыми данными бронирования
-            # Используем extracted_info из обновленного conversation_state, если он есть
-            updated_extracted_info = updated_conversation_state.get("extracted_info")
-            if updated_extracted_info is None:
-                # Если нет, создаем копию исходного
-                updated_extracted_info = extracted_info.copy()
-            
-            # Всегда обновляем booking данными из графа (они самые актуальные)
-            updated_extracted_info = updated_extracted_info.copy()
+            updated_extracted_info = (updated_conversation_state.get("extracted_info") or {}).copy()
             updated_extracted_info["booking"] = dict(updated_booking_state)
-            
-            logger.debug(f"Финальное extracted_info.booking: {updated_extracted_info.get('booking')}")
-            
-            # Извлекаем answer и другие поля из обновленного conversation_state
-            answer = updated_conversation_state.get("answer", "")
-            manager_alert = updated_conversation_state.get("manager_alert")
-            used_tools = updated_conversation_state.get("used_tools")
-            tool_results = updated_conversation_state.get("tool_results")
-            
-            # КРИТИЧНО: Извлекаем messages из updated_conversation_state (включая ToolMessage из узлов)
-            updated_messages = updated_conversation_state.get("messages", state.get("messages", []))
             
             # Создаем обновленное ConversationState
             updated_state: ConversationState = {
                 **state,
-                "messages": updated_messages,  # КРИТИЧНО: Используем messages из booking графа (с ToolMessage)
+                "messages": updated_conversation_state.get("messages", state.get("messages", [])),
                 "extracted_info": updated_extracted_info,
-                "answer": answer,
-                "manager_alert": manager_alert,
-                "used_tools": used_tools,
-                "tool_results": tool_results,
+                "answer": updated_conversation_state.get("answer", ""),
+                "manager_alert": updated_conversation_state.get("manager_alert"),
+                "used_tools": updated_conversation_state.get("used_tools"),
+                "tool_results": updated_conversation_state.get("tool_results"),
                 "agent_name": "BookingAgent"
             }
             

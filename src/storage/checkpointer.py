@@ -74,31 +74,17 @@ async def initialize_checkpointer_tables():
 
 
 def _get_connection_string() -> str:
-    """
-    Получить строку подключения к PostgreSQL из переменных окружения.
-    
-    Сначала проверяет DATABASE_URL, если его нет - собирает из отдельных переменных.
-    
-    Returns:
-        Строка подключения в формате postgresql://user:pass@host:port/db
-    """
-    # Проверяем наличие полной строки подключения
+    """Получить строку подключения к PostgreSQL из переменных окружения"""
     database_url = os.getenv("DATABASE_URL")
     if database_url:
-        logger.info("Используется DATABASE_URL для подключения к PostgreSQL")
         return database_url
     
-    # Собираем строку подключения из отдельных переменных
     host = os.getenv("PG_HOST", "localhost")
     port = os.getenv("PG_PORT", "5432")
     database = os.getenv("PG_DB", "ai_db")
     user = os.getenv("PG_USER", "postgres")
     password = os.getenv("PG_PASSWORD", "")
-    
-    connection_string = f"postgresql://{user}:{password}@{host}:{port}/{database}"
-    logger.info(f"Строка подключения собрана из переменных окружения: {host}:{port}/{database}")
-    
-    return connection_string
+    return f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 
 async def clear_thread_memory(thread_id: str) -> None:
