@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+import psycopg
 from ..services.logger_service import logger
 
 # Флаг для отслеживания, был ли выполнен setup
@@ -98,6 +99,70 @@ def _get_connection_string() -> str:
     logger.info(f"Строка подключения собрана из переменных окружения: {host}:{port}/{database}")
     
     return connection_string
+
+
+async def clear_thread_memory(thread_id: str) -> None:
+    """
+    Полностью очищает память для конкретного thread_id из базы данных PostgreSQL.
+    
+    Удаляет все записи из таблиц checkpointer для указанного thread_id:
+    - checkpoint_writes
+    - checkpoint_blobs
+    - checkpoints
+    
+    Args:
+        thread_id: Идентификатор треда (обычно telegram_user_id)
+        
+    Raises:
+        Exception: При ошибках подключения или выполнения SQL-запросов
+    """
+    connection_string = _get_connection_string()
+    
+    try:
+        logger.info(f"Очистка памяти для thread_id={thread_id}")
+        
+        # Подключаемся к БД с autocommit=True для выполнения DELETE
+        async with await psycopg.AsyncConnection.connect(connection_string, autocommit=True) as conn:
+            # Удаляем записи в правильном порядке (с учетом возможных Foreign Keys)
+            # Порядок: сначала зависимые таблицы, потом основная
+            
+            # 1. Удаляем checkpoint_writes
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM checkpoint_writes WHERE thread_id = %s",
+                    (thread_id,)
+                )
+                deleted_writes = cur.rowcount
+                logger.debug(f"Удалено записей из checkpoint_writes: {deleted_writes}")
+            
+            # 2. Удаляем checkpoint_blobs
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM checkpoint_blobs WHERE thread_id = %s",
+                    (thread_id,)
+                )
+                deleted_blobs = cur.rowcount
+                logger.debug(f"Удалено записей из checkpoint_blobs: {deleted_blobs}")
+            
+            # 3. Удаляем checkpoints (основная таблица)
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "DELETE FROM checkpoints WHERE thread_id = %s",
+                    (thread_id,)
+                )
+                deleted_checkpoints = cur.rowcount
+                logger.debug(f"Удалено записей из checkpoints: {deleted_checkpoints}")
+            
+            logger.info(
+                f"Память очищена для thread_id={thread_id}: "
+                f"checkpoints={deleted_checkpoints}, "
+                f"checkpoint_writes={deleted_writes}, "
+                f"checkpoint_blobs={deleted_blobs}"
+            )
+        
+    except Exception as e:
+        logger.error(f"Ошибка при очистке памяти для thread_id={thread_id}: {e}", exc_info=True)
+        raise
 
 
 @asynccontextmanager

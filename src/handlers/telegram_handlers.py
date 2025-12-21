@@ -87,14 +87,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def new_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /new - сброс контекста"""
+    """Обработчик команды /new - полный сброс памяти"""
     chat_id = str(update.effective_chat.id)
     logger.telegram("Команда /new", chat_id)
     try:
         agent_service = get_agent_service()
         await agent_service.reset_context(chat_id)
-        logger.success("Контекст сброшен", chat_id)
-        await update.message.reply_text('Контекст сброшен. Начинаем новый диалог!')
+        logger.success("Память полностью очищена", chat_id)
+        await update.message.reply_text('Память полностью очищена. Начинаем новый диалог.')
     except Exception as e:
         logger.error("Ошибка при сбросе контекста", str(e))
         await update.message.reply_text(f'Ошибка при сбросе контекста: {str(e)}')

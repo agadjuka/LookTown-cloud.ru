@@ -10,7 +10,7 @@ from .debug_service import DebugService
 from .logger_service import logger
 from ..graph.main_graph import create_main_graph
 from .langgraph_service import LangGraphService
-from ..storage.checkpointer import get_postgres_checkpointer
+from ..storage.checkpointer import get_postgres_checkpointer, clear_thread_memory
 import requests
 
 
@@ -161,9 +161,10 @@ class AgentService:
     
     async def reset_context(self, chat_id: str):
         """
-        Сброс контекста для чата через обновление состояния в checkpointer
+        Полный сброс контекста для чата через физическое удаление чекпоинтов из БД.
         
-        Очищает историю сообщений для пользователя, создавая новый thread_id или очищая messages.
+        Удаляет все записи чекпоинтов для пользователя из PostgreSQL,
+        что обеспечивает полную очистку памяти, как будто пользователь пишет впервые.
         """
         try:
             # Получаем telegram_user_id из chat_id
@@ -173,37 +174,12 @@ class AgentService:
                 logger.error(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id")
                 telegram_user_id = 0
             
-            logger.info(f"Сброс контекста для chat_id={chat_id}, telegram_user_id={telegram_user_id}")
+            logger.info(f"Полный сброс контекста для chat_id={chat_id}, telegram_user_id={telegram_user_id}")
             
-            async with get_postgres_checkpointer() as checkpointer:
-                # Создаем граф с checkpointer
-                app = create_main_graph(self.langgraph_service, checkpointer=checkpointer)
-                
-                # Используем ID пользователя как thread_id
-                config = {"configurable": {"thread_id": str(telegram_user_id)}}
-                
-                # Очищаем список сообщений в состоянии
-                # Используем update_state для очистки messages
-                try:
-                    # Получаем текущее состояние
-                    current_state = await app.aget_state(config)
-                    
-                    if current_state and current_state.values:
-                        # Очищаем messages через update_state
-                        # Используем специальный метод для очистки messages
-                        await app.aupdate_state(
-                            config,
-                            {"messages": []}
-                        )
-                        logger.info(f"Контекст очищен для telegram_user_id={telegram_user_id}")
-                    else:
-                        logger.info(f"Состояние не найдено для telegram_user_id={telegram_user_id}, очистка не требуется")
-                        
-                except Exception as e:
-                    logger.warning(f"Ошибка при очистке состояния через update_state: {e}")
-                    # Альтернативный вариант: просто логируем, что контекст будет сброшен
-                    # при следующем сообщении (новый thread_id или пустое состояние)
-                    logger.info(f"Контекст будет сброшен при следующем сообщении для telegram_user_id={telegram_user_id}")
+            # Физически удаляем все чекпоинты из БД для этого thread_id
+            await clear_thread_memory(str(telegram_user_id))
+            
+            logger.info(f"Память полностью очищена для telegram_user_id={telegram_user_id}")
             
             # Очищаем историю результатов инструментов
             try:
@@ -216,3 +192,4 @@ class AgentService:
                 
         except Exception as e:
             logger.error(f"Ошибка при сбросе контекста: {e}", exc_info=True)
+            raise
