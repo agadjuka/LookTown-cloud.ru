@@ -100,81 +100,10 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
         "content": last_user_message
     })
     
-    # 🕵️‍♂️ DEBUG: Проверяем, что видит BookingAnalyzer перед извлечением
-    print(f"\n🕵️‍♂️ --- DEBUG: Что видит BookingAnalyzer перед извлечением? ---")
-    print(f"📦 Оригинальные messages из state (всего: {len(messages)}):")
-    tool_messages_count = 0
-    for i, m in enumerate(messages):
-        # Обрабатываем как объект BaseMessage или словарь
-        if isinstance(m, dict):
-            role = m.get("role", "unknown")
-            m_type = m.get("type", role)  # Для словарей type может отсутствовать
-            content_preview = str(m.get("content", ""))[:200].replace("\n", " ")
-        else:
-            role = getattr(m, "role", "unknown")
-            m_type = getattr(m, "type", "unknown")
-            content_preview = str(getattr(m, "content", ""))[:200].replace("\n", " ")
-        
-        print(f"  [{i}] Role: {role} | Type: {m_type} | Content: {content_preview}...")
-        
-        if m_type == 'tool' or role == 'tool':
-            tool_messages_count += 1
-            if isinstance(m, dict):
-                content_str = str(m.get("content", ""))
-                tool_call_id = m.get("tool_call_id", "N/A")
-            else:
-                content_str = str(getattr(m, "content", ""))
-                tool_call_id = getattr(m, "tool_call_id", "N/A")
-            has_service_id = 'service_id' in content_str.lower() or '"id"' in content_str
-            print(f"      ✅ ВИЖУ TOOL MESSAGE! tool_call_id={tool_call_id}, Содержит service_id: {has_service_id}")
-    
-    if tool_messages_count == 0:
-        print(f"      ⚠️ ПРОБЛЕМА: НЕ НАЙДЕНО ToolMessage в state! Всего сообщений: {len(messages)}")
-    
-    print(f"\n📤 input_messages для LLM (всего: {len(input_messages)}):")
-    for i, m in enumerate(input_messages):
-        role = m.get("role", "unknown")
-        content_preview = str(m.get("content", ""))[:200].replace("\n", " ")
-        print(f"  [{i}] Role: {role} | Content: {content_preview}...")
-        
-        if role == 'tool':
-            content_str = str(m.get("content", ""))
-            tool_call_id = m.get("tool_call_id", "N/A")
-            has_service_id = 'service_id' in content_str.lower() or '"id"' in content_str
-            print(f"      ✅ ВИЖУ TOOL MESSAGE в input_messages! tool_call_id={tool_call_id}, Содержит service_id: {has_service_id}")
-        elif role == 'assistant':
-            # Проверяем, есть ли tool_calls в assistant сообщении
-            tool_calls = m.get("tool_calls", [])
-            if tool_calls:
-                tool_call_ids = []
-                for tc in tool_calls:
-                    if isinstance(tc, dict):
-                        tool_call_ids.append(tc.get('id', 'N/A'))
-                    else:
-                        tool_call_ids.append(getattr(tc, 'id', 'N/A'))
-                print(f"      ✅ AIMessage с {len(tool_calls)} tool_calls: IDs={tool_call_ids}")
-                # Проверяем, есть ли следующий ToolMessage с соответствующим tool_call_id
-                if i + 1 < len(input_messages):
-                    next_msg = input_messages[i + 1]
-                    if next_msg.get("role") == "tool":
-                        next_tool_call_id = next_msg.get("tool_call_id", "N/A")
-                        if next_tool_call_id in tool_call_ids:
-                            print(f"      ✅ Следующий ToolMessage связан правильно: tool_call_id={next_tool_call_id}")
-                        else:
-                            print(f"      ⚠️ ПРОБЛЕМА: ToolMessage tool_call_id={next_tool_call_id} не совпадает с tool_calls IDs={tool_call_ids}")
-    
-    print("----------------------------------------------------------------\n")
-    
     response_content = None
     try:
         # Создаем клиент и делаем запрос
         client = ResponsesAPIClient(ResponsesAPIConfig())
-        
-        # Логируем запрос перед отправкой
-        logger.debug(f"Analyzer отправляет запрос с {len(input_messages)} сообщениями")
-        tool_msgs_in_request = sum(1 for m in input_messages if m.get("role") == "tool")
-        if tool_msgs_in_request > 0:
-            logger.info(f"Analyzer: отправляю {tool_msgs_in_request} ToolMessage в API")
         
         try:
             response = client.create_response(
@@ -194,9 +123,6 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
         
         message = response.choices[0].message
         
-        # Логируем детали ответа
-        logger.debug(f"Analyzer получил ответ: content={message.content is not None}, tool_calls={hasattr(message, 'tool_calls') and message.tool_calls is not None}")
-        
         if message.content is None or not message.content.strip():
             logger.warning("Получен пустой ответ от LLM в booking_analyzer_node")
             # Логируем детали для отладки
@@ -206,7 +132,6 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
             return {}
         
         response_content = message.content.strip()
-        logger.debug(f"Ответ LLM от analyzer: {response_content}")
         
         # Парсим JSON из ответа
         extracted_data = _parse_llm_response(response_content)

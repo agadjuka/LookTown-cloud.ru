@@ -137,7 +137,6 @@ class MainGraph:
         
         # Получаем все новые сообщения из результата
         new_messages = result.get("messages", [])
-        logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
         
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
@@ -211,7 +210,6 @@ class MainGraph:
         
         # Получаем все новые сообщения из результата
         new_messages = result.get("messages", [])
-        logger.info(f"{agent_name} сгенерировал {len(new_messages)} новых сообщений")
         
         # Получаем полную информацию о tool_calls
         tool_results = result.get("tool_calls", [])

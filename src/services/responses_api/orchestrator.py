@@ -65,8 +65,6 @@ class ResponsesOrchestrator:
             "content": user_message
         })
         
-        logger.debug(f"Отправка в API: {len(messages)} сообщений")
-        
         # Цикл для обработки множественных вызовов инструментов
         max_iterations = 10
         iteration = 0
@@ -75,7 +73,6 @@ class ResponsesOrchestrator:
         
         while iteration < max_iterations:
             iteration += 1
-            logger.debug(f"Итерация {iteration}: Запрос к API")
             
             # Обрезаем историю перед вызовом LLM (оставляем последние 20 сообщений)
             # Используем простую обрезку по количеству сообщений
@@ -111,7 +108,6 @@ class ResponsesOrchestrator:
                     system_msgs = [m for m in base_messages if isinstance(m, SystemMessage)]
                     non_system_msgs = [m for m in base_messages if not isinstance(m, SystemMessage)]
                     trimmed_messages = system_msgs + non_system_msgs[-20:]
-                    logger.info(f"История обрезана: {len(base_messages)} -> {len(trimmed_messages)} сообщений")
                 else:
                     trimmed_messages = base_messages
                 
@@ -195,8 +191,6 @@ class ResponsesOrchestrator:
             
             # Проверяем tool_calls
             if message.tool_calls:
-                logger.debug(f"Найдено {len(message.tool_calls)} вызовов инструментов на итерации {iteration}")
-                
                 for tool_call in message.tool_calls:
                     func_name = tool_call.function.name
                     call_id = tool_call.id
@@ -287,16 +281,6 @@ class ResponsesOrchestrator:
         # Это все сообщения после истории (начиная с history_length + 1, чтобы исключить user_message)
         # user_message уже есть в state["messages"], поэтому его не включаем
         new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
-        
-        logger.debug(f"Возвращаем {len(new_messages)} новых сообщений из orchestrator")
-        # Детальное логирование для отладки ToolMessage
-        for i, msg in enumerate(new_messages):
-            role = msg.get("role", "unknown")
-            logger.debug(f"  new_messages[{i}]: role={role}, content_preview={str(msg.get('content', ''))[:100]}")
-            if role == "tool":
-                logger.debug(f"      ✅ TOOL MESSAGE! tool_call_id={msg.get('tool_call_id', 'N/A')}")
-            elif role == "assistant" and msg.get("tool_calls"):
-                logger.debug(f"      ✅ AIMessage с {len(msg.get('tool_calls', []))} tool_calls")
         
         return {
             "reply": reply_text,

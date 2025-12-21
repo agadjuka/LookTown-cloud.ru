@@ -124,14 +124,8 @@ def _create_booking_state_adapter(original_node):
         if new_messages:
             # Используем add_messages reducer логику: добавляем новые к существующим
             combined_messages = list(existing_messages) + list(new_messages)
-            logger.info(f"Адаптер: объединяю messages: {len(existing_messages)} существующих + {len(new_messages)} новых = {len(combined_messages)} всего")
-            # Логируем ToolMessage для отладки
-            tool_messages_in_new = sum(1 for m in new_messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
-            if tool_messages_in_new > 0:
-                logger.info(f"Адаптер: в новых messages найдено {tool_messages_in_new} ToolMessage")
         else:
             combined_messages = existing_messages
-            logger.debug(f"Адаптер: новых messages нет, оставляю {len(existing_messages)} существующих")
         
         # Обновляем conversation_state с результатами узла
         updated_conversation_state = {**full_conversation_state, **result}

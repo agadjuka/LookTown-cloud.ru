@@ -74,10 +74,6 @@ class BookingAgent(BaseAgent):
             
             # КРИТИЧНО: Проверяем, что messages передаются в booking граф
             messages = state.get("messages", [])
-            logger.info(f"BookingAgent: передаю {len(messages)} messages в booking граф")
-            tool_messages_count = sum(1 for m in messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
-            if tool_messages_count > 0:
-                logger.info(f"BookingAgent: передаю {tool_messages_count} ToolMessage в booking граф")
             
             # Создаем состояние для графа (с booking и conversation)
             graph_state = {
@@ -135,11 +131,6 @@ class BookingAgent(BaseAgent):
             
             # КРИТИЧНО: Извлекаем messages из updated_conversation_state (включая ToolMessage из узлов)
             updated_messages = updated_conversation_state.get("messages", state.get("messages", []))
-            logger.info(f"BookingAgent: извлечено {len(updated_messages)} messages из booking графа")
-            # Логируем ToolMessage для отладки
-            tool_messages_count = sum(1 for m in updated_messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
-            if tool_messages_count > 0:
-                logger.info(f"BookingAgent: найдено {tool_messages_count} ToolMessage в updated_messages")
             
             # Создаем обновленное ConversationState
             updated_state: ConversationState = {

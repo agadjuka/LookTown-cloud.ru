@@ -417,8 +417,6 @@ def _find_and_offer_slots(
         new_messages_dicts = result.get("new_messages", [])
         new_messages = _dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
         
-        logger.info(f"Slot manager сгенерировал {len(new_messages)} новых сообщений")
-        
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
             logger.info("CallManager был вызван в slot_manager_node")

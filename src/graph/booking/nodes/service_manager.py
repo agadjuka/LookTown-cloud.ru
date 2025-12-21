@@ -215,23 +215,6 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         new_messages_dicts = result.get("new_messages", [])
         new_messages = _dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
         
-        logger.info(f"Service manager сгенерировал {len(new_messages)} новых сообщений")
-        # Детальное логирование для отладки ToolMessage
-        tool_messages_count = 0
-        for i, msg in enumerate(new_messages):
-            msg_type = getattr(msg, "type", "unknown")
-            content_preview = str(getattr(msg, "content", ""))[:100]
-            logger.info(f"  [{i}] Type: {msg_type}, Content: {content_preview}...")
-            if msg_type == "tool":
-                tool_messages_count += 1
-                tool_call_id = getattr(msg, "tool_call_id", "N/A")
-                logger.info(f"      ✅ TOOL MESSAGE! tool_call_id={tool_call_id}")
-            elif msg_type == "ai" and hasattr(msg, "tool_calls") and msg.tool_calls:
-                logger.info(f"      ✅ AIMessage с {len(msg.tool_calls)} tool_calls")
-        
-        if tool_messages_count == 0 and tool_calls:
-            logger.warning(f"⚠️ ПРОБЛЕМА: Были tool_calls ({len(tool_calls)}), но нет ToolMessage в new_messages!")
-        
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
             logger.info("CallManager был вызван в service_manager_node")
