@@ -143,6 +143,11 @@ class FindSlots(BaseModel):
                 
                 result_lines.append("")  # Пустая строка между мастерами
             
+            # Если мастеров больше одного, добавляем дополнительную строку
+            masters_with_results = [m for m in masters if m.get('results')]
+            if len(masters_with_results) > 1:
+                result_lines.append("Либо просто выберите время, я запишу Вас к любому доступному.")
+            
             result_lines.append("((Строго сохраняй форматирование))")
             return "\n".join(result_lines).strip()
             
