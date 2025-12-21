@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
 from ...utils import messages_to_history
 from ..state import BookingSubState
+from ..booking_state_updater import try_update_booking_state_from_reply
 from ....services.responses_api.client import ResponsesAPIClient
 from ....services.responses_api.config import ResponsesAPIConfig
 from ....services.logger_service import logger
@@ -125,9 +126,25 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
         
         logger.info(f"Contact collector ответил: {reply[:100]}...")
         
+        # Проверяем, есть ли JSON в ответе для обновления состояния
+        updated_extracted_info = try_update_booking_state_from_reply(
+            reply=reply,
+            current_booking_state=booking_state,
+            extracted_info=extracted_info
+        )
+        
         # КРИТИЧНО: Создаем AIMessage для сохранения в истории LangGraph
         from langchain_core.messages import AIMessage
         new_messages = [AIMessage(content=reply)]
+        
+        # Если JSON найден и состояние обновлено - не отправляем сообщение клиенту
+        if updated_extracted_info:
+            logger.info("JSON найден в ответе contact_collector, состояние обновлено, пропускаем отправку сообщения клиенту")
+            return {
+                "messages": new_messages,
+                "answer": "",  # Пустой answer - процесс продолжается автоматически
+                "extracted_info": updated_extracted_info
+            }
         
         return {
             "messages": new_messages,  # КРИТИЧНО: Возвращаем сообщение для сохранения в истории

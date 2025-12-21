@@ -150,19 +150,28 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     
     Логика (строгий порядок проверок):
     1. Если is_finalized -> END (процесс завершен)
-    2. Если service_id is None -> service_manager (даже если есть service_name, ID важнее)
-    3. Если slot_time is None -> slot_manager (поиск слотов)
-    4. Если slot_time есть, но slot_time_verified is False/None -> slot_manager (проверка доступности)
-    5. Если нет контактов (client_name или client_phone) -> contact_collector
-    6. Иначе (все данные есть) -> finalizer
+    2. Проверяем answer в conversation - если пустой, продолжаем процесс автоматически
+    3. Если service_id is None -> service_manager (даже если есть service_name, ID важнее)
+    4. Если slot_time is None -> slot_manager (поиск слотов)
+    5. Если slot_time есть, но slot_time_verified is False/None -> slot_manager (проверка доступности)
+    6. Если нет контактов (client_name или client_phone) -> contact_collector
+    7. Иначе (все данные есть) -> finalizer
+    8. Если answer не пустой -> END (ждем ответа клиента)
     
     Args:
-        state: Состояние графа (словарь с ключом 'booking')
+        state: Состояние графа (словарь с ключом 'booking' и 'conversation')
         
     Returns:
         Имя следующего узла или END
     """
     booking_state = state.get("booking", {})
+    conversation_state = state.get("conversation", {})
+    
+    # Проверяем answer - если не пустой, значит нужно отправить сообщение клиенту и ждать ответа
+    answer = conversation_state.get("answer", "")
+    if answer and answer.strip():
+        logger.info(f"Answer не пустой ({len(answer)} символов), завершаем граф для отправки сообщения клиенту")
+        return END
     
     # Логируем текущее состояние для отладки
     service_id = booking_state.get("service_id")
@@ -240,9 +249,9 @@ def create_booking_graph(checkpointer):
     # Добавляем ребра
     workflow.add_edge(START, "analyzer")
     workflow.add_conditional_edges("analyzer", route_booking)
-    workflow.add_edge("service_manager", END)  # После service_manager ждем ответа клиента
+    workflow.add_conditional_edges("service_manager", route_booking)  # Условный роутинг: если answer пустой - продолжаем, иначе END
     workflow.add_conditional_edges("slot_manager", route_after_slot_manager)  # Условный роутинг после slot_manager
-    workflow.add_edge("contact_collector", END)  # После contact_collector ждем ответа клиента
+    workflow.add_conditional_edges("contact_collector", route_booking)  # Условный роутинг: если answer пустой - продолжаем, иначе END
     workflow.add_edge("finalizer", END)  # Только finalizer завершает граф
     
     # Компилируем граф с checkpointer

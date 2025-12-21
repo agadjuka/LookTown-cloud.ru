@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
 from ...utils import messages_to_history, dicts_to_messages
 from ..state import BookingSubState
+from ..booking_state_updater import try_update_booking_state_from_reply
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
 from ....services.responses_api.config import ResponsesAPIConfig
@@ -72,6 +73,8 @@ def _build_system_prompt(
 - Сохраняй список нумерованным точо также как получаешь из инструмента.
 - Узнать детали об услуге (в т.ч. кто из мастеров её делает - ViewServices)
 - Если клиент решил сменить услугу или мастера - начинай сначала (не считая приветствия) по инструкции - вызывай инструменты снова.
+Если клиент выбрал конкретную услугу, верни ТОЛЬКО JSON с ID выбранной услуги в формате: {{"service_id": 12345678}} (единственная ситуация когда ты можешь отправить ID услуги)
+
 """
     
     return prompt
@@ -161,6 +164,24 @@ def service_manager_node(state: ConversationState) -> ConversationState:
                 "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": result.get("reply", ""),
                 "manager_alert": result.get("manager_alert"),
+                "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
+                "tool_results": tool_calls if tool_calls else []
+            }
+        
+        # Проверяем, есть ли JSON в ответе для обновления состояния
+        updated_extracted_info = try_update_booking_state_from_reply(
+            reply=reply,
+            current_booking_state=booking_state,
+            extracted_info=extracted_info
+        )
+        
+        # Если JSON найден и состояние обновлено - не отправляем сообщение клиенту
+        if updated_extracted_info:
+            logger.info("JSON найден в ответе service_manager, состояние обновлено, пропускаем отправку сообщения клиенту")
+            return {
+                "messages": new_messages,
+                "answer": "",  # Пустой answer - процесс продолжается автоматически
+                "extracted_info": updated_extracted_info,
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
                 "tool_results": tool_calls if tool_calls else []
             }
