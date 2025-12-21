@@ -219,7 +219,7 @@ async def find_slots_by_period(
     if service_name == "Лист ожидания":
         return {
             "service_title": service_name,
-            "results": []
+            "masters": []
         }
     
     service_title = service_details.get_title()
@@ -253,8 +253,7 @@ async def find_slots_by_period(
         if not found_master:
             return {
                 "service_title": service_title,
-                "master_name": master_name,
-                "results": [],
+                "masters": [],
                 "error": f"Мастер с именем '{master_name}' не найден для данной услуги"
             }
         master_ids = [found_master.id]
@@ -265,7 +264,7 @@ async def find_slots_by_period(
     if not master_ids:
         return {
             "service_title": service_title,
-            "results": [],
+            "masters": [],
             "error": "Не найдено мастеров для данной услуги"
         }
     
@@ -307,11 +306,15 @@ async def find_slots_by_period(
     
     responses = await asyncio.gather(*tasks, return_exceptions=True)
     
-    date_slots = {}
-    task_index = 0
+    # Храним слоты по мастерам: master_slots[master_id][date] = set()
+    master_slots = {}
+    for master_id in master_ids:
+        master_slots[master_id] = {}
+        for check_date in dates_to_check:
+            master_slots[master_id][check_date] = set()
     
+    task_index = 0
     for check_date in dates_to_check:
-        date_slots[check_date] = set()
         for master_id in master_ids:
             response = responses[task_index]
             task_index += 1
@@ -320,58 +323,77 @@ async def find_slots_by_period(
                 continue
             
             for slot in response.data:
-                date_slots[check_date].add(slot.time)
+                master_slots[master_id][check_date].add(slot.time)
     
-    results = []
-    days_found = 0
+    # Создаем словарь для имен мастеров
+    master_names_dict = {}
+    for master in valid_masters:
+        if master.id in master_ids:
+            master_names_dict[master.id] = master.name
+    
+    if result_master_name and len(master_ids) == 1:
+        # Если указан конкретный мастер, используем его имя
+        master_names_dict[master_ids[0]] = result_master_name
+    
     target_days = 3 if not date and not date_range else len(dates_to_check)
     
     if filter_by_time:
         start_bound, end_bound = _get_time_period_bounds(time_period)
     
-    for check_date in dates_to_check:
-        if not date and not date_range and days_found >= target_days:
-            break
+    # Обрабатываем каждого мастера отдельно
+    masters_results = []
+    for master_id in master_ids:
+        master_name = master_names_dict.get(master_id, f"Мастер {master_id}")
+        master_results = []
+        days_found = 0
         
-        times = sorted(list(date_slots[check_date]), key=_time_to_minutes)
-        
-        if not times:
-            continue
-        
-        if filter_by_time:
-            filtered_times = _filter_times_by_period(times, time_period)
+        for check_date in dates_to_check:
+            if not date and not date_range and days_found >= target_days:
+                break
             
-            if not filtered_times:
+            times = sorted(list(master_slots[master_id][check_date]), key=_time_to_minutes)
+            
+            if not times:
                 continue
             
-            intervals = _merge_consecutive_slots(filtered_times)
-            
-            final_intervals = []
-            for interval in intervals:
-                start_time_str = interval.split('-')[0].strip()
-                start_minutes = _time_to_minutes(start_time_str)
+            if filter_by_time:
+                filtered_times = _filter_times_by_period(times, time_period)
                 
-                if start_bound <= start_minutes <= end_bound:
-                    final_intervals.append(interval)
-        else:
-            intervals = _merge_consecutive_slots(times)
-            final_intervals = intervals
+                if not filtered_times:
+                    continue
+                
+                intervals = _merge_consecutive_slots(filtered_times)
+                
+                final_intervals = []
+                for interval in intervals:
+                    start_time_str = interval.split('-')[0].strip()
+                    start_minutes = _time_to_minutes(start_time_str)
+                    
+                    if start_bound <= start_minutes <= end_bound:
+                        final_intervals.append(interval)
+            else:
+                intervals = _merge_consecutive_slots(times)
+                final_intervals = intervals
+            
+            if final_intervals:
+                master_results.append({
+                    "date": check_date,
+                    "slots": final_intervals
+                })
+                days_found += 1
         
-        if final_intervals:
-            results.append({
-                "date": check_date,
-                "slots": final_intervals
+        if master_results:
+            masters_results.append({
+                "master_id": master_id,
+                "master_name": master_name,
+                "results": master_results
             })
-            days_found += 1
     
     result = {
         "service_title": service_title,
         "time_period": time_period if filter_by_time else "",
-        "results": results
+        "masters": masters_results
     }
-    
-    if result_master_name:
-        result["master_name"] = result_master_name
     
     return result
 

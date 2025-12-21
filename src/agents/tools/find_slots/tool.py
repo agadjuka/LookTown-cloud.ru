@@ -83,23 +83,23 @@ class FindSlots(BaseModel):
             
             service_title = result.get('service_title', 'Услуга')
             time_period = result.get('time_period', '')
-            master_name = result.get('master_name')
-            results = result.get('results', [])
+            masters = result.get('masters', [])
             
-            if not results:
+            if not masters:
                 if time_period:
                     period_display = self._format_time_period_display(time_period)
                     period_text = f" {period_display}"
                 else:
                     period_text = ""
                 
-                if master_name:
+                if self.master_name or self.master_id:
+                    master_display = self.master_name or f"мастера {self.master_id}"
                     if self.date:
-                        return f"К сожалению, у мастера {master_name} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
+                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
                     elif self.date_range:
-                        return f"К сожалению, у мастера {master_name} нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
+                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
                     else:
-                        return f"К сожалению, у мастера {master_name} нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
+                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
                 else:
                     if self.date:
                         return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
@@ -115,25 +115,34 @@ class FindSlots(BaseModel):
                 period_text = ""
             
             result_lines = []
-            if master_name:
-                result_lines.append(f"Доступные слоты{period_text} у мастера {master_name} для услуги '{service_title}':\n")
-            else:
-                result_lines.append(f"Доступные слоты{period_text} для услуги '{service_title}':\n")
+            result_lines.append(f"Доступные слоты{period_text} для услуги '{service_title}':\n")
             
-            for day_result in results:
-                date = day_result['date']
-                slots = day_result['slots']
+            # Выводим слоты для каждого мастера отдельно
+            for master_data in masters:
+                master_name = master_data.get('master_name', 'Неизвестный мастер')
+                master_results = master_data.get('results', [])
                 
-                try:
-                    date_obj = datetime.strptime(date, "%Y-%m-%d")
-                    formatted_date = date_obj.strftime("%d.%m.%Y")
-                except:
-                    formatted_date = date
+                if not master_results:
+                    continue
                 
-                slots_text = " | ".join(slots)
-                result_lines.append(f"  {formatted_date}: {slots_text}")
+                result_lines.append(f"Мастер {master_name}:")
+                
+                for day_result in master_results:
+                    date = day_result['date']
+                    slots = day_result['slots']
+                    
+                    try:
+                        date_obj = datetime.strptime(date, "%Y-%m-%d")
+                        formatted_date = date_obj.strftime("%d.%m.%Y")
+                    except:
+                        formatted_date = date
+                    
+                    slots_text = " | ".join(slots)
+                    result_lines.append(f"  {formatted_date}: {slots_text}")
+                
+                result_lines.append("")  # Пустая строка между мастерами
             
-            return "\n".join(result_lines)
+            return "\n".join(result_lines).strip()
             
         except ValueError as e:
             logger.error(f"Ошибка конфигурации FindSlots: {e}")
