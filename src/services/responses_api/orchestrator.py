@@ -3,7 +3,7 @@ Orchestrator для обработки диалогов через OpenAI API
 """
 import json
 from typing import List, Dict, Any, Optional
-from langchain_core.messages import trim_messages, BaseMessage
+from langchain_core.messages import BaseMessage
 from .client import ResponsesAPIClient
 from .tools_registry import ResponsesToolsRegistry
 from .config import ResponsesAPIConfig
@@ -72,8 +72,8 @@ class ResponsesOrchestrator:
             iteration += 1
             logger.debug(f"Итерация {iteration}: Запрос к API")
             
-            # Обрезаем историю перед вызовом LLM (оставляем последние 30 сообщений)
-            # Используем trim_messages для правильной обрезки с сохранением системных сообщений
+            # Обрезаем историю перед вызовом LLM (оставляем последние 20 сообщений)
+            # Используем простую обрезку по количеству сообщений
             try:
                 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
                 
@@ -100,31 +100,15 @@ class ResponsesOrchestrator:
                     elif role == "system":
                         base_messages.append(SystemMessage(content=content))
                 
-                # Обрезаем историю: последние 30 сообщений, включая системные
-                # Используем большой max_tokens, чтобы обрезка шла по количеству сообщений
-                # trim_messages с strategy="last" оставит последние сообщения
-                from langchain_core.messages.utils import get_tokenizer
-                token_counter = get_tokenizer()
-                
-                trimmed_messages = trim_messages(
-                    base_messages,
-                    max_tokens=100000,  # Большое значение, чтобы обрезка шла по количеству
-                    strategy="last",
-                    include_system=True,
-                    allow_partial=False,
-                    token_counter=token_counter,
-                )
-                
-                # Дополнительно ограничиваем до 30 сообщений (если trim_messages не сработал)
-                if len(trimmed_messages) > 30:
-                    # Сохраняем системные сообщения и берем последние 30 несистемных
-                    system_msgs = [m for m in trimmed_messages if isinstance(m, SystemMessage)]
-                    non_system_msgs = [m for m in trimmed_messages if not isinstance(m, SystemMessage)]
-                    trimmed_messages = system_msgs + non_system_msgs[-30:]
-                
-                # Если обрезка произошла, логируем
-                if len(trimmed_messages) < len(base_messages):
+                # Простая обрезка: оставляем последние 20 сообщений
+                # Сохраняем системные сообщения и берем последние 20 несистемных
+                if len(base_messages) > 20:
+                    system_msgs = [m for m in base_messages if isinstance(m, SystemMessage)]
+                    non_system_msgs = [m for m in base_messages if not isinstance(m, SystemMessage)]
+                    trimmed_messages = system_msgs + non_system_msgs[-20:]
                     logger.info(f"История обрезана: {len(base_messages)} -> {len(trimmed_messages)} сообщений")
+                else:
+                    trimmed_messages = base_messages
                 
                 # Преобразуем обратно в словари для API
                 trimmed_dicts = []
