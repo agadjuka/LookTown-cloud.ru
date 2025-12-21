@@ -116,6 +116,7 @@ class FindSlots(BaseModel):
             
             result_lines = []
             result_lines.append(f"Доступные слоты{period_text} для услуги '{service_title}':\n")
+            result_lines.append("")
             
             # Выводим слоты для каждого мастера отдельно
             for master_data in masters:
@@ -125,7 +126,7 @@ class FindSlots(BaseModel):
                 if not master_results:
                     continue
                 
-                result_lines.append(f"Мастер {master_name}:")
+                result_lines.append(f"**Мастер {master_name}**:")
                 
                 for day_result in master_results:
                     date = day_result['date']
@@ -142,6 +143,7 @@ class FindSlots(BaseModel):
                 
                 result_lines.append("")  # Пустая строка между мастерами
             
+            result_lines.append("((Строго сохраняй форматирование))")
             return "\n".join(result_lines).strip()
             
         except ValueError as e:
