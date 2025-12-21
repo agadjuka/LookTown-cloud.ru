@@ -65,7 +65,9 @@ def finalizer_node(state: ConversationState) -> ConversationState:
     
     # Получаем сообщение пользователя и историю
     user_message = state.get("message", "")
-    history = state.get("history") or []
+    # Преобразуем messages в history для обратной совместимости
+    messages = state.get("messages", [])
+    history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else []
     chat_id = state.get("chat_id")
     
     # Форматируем дату и время для промпта

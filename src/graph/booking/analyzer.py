@@ -31,7 +31,9 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
     
     # Получаем текущее сообщение и историю
     last_user_message = state.get("message", "")
-    history = state.get("history") or []
+    # Преобразуем messages в history для обратной совместимости
+    messages = state.get("messages", [])
+    history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else []
     extracted_info = state.get("extracted_info") or {}
     
     # Получаем текущее состояние бронирования из extracted_info

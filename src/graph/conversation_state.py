@@ -1,20 +1,21 @@
 """
 Состояние для основного графа диалога (Responses API)
 """
-from typing import TypedDict, Optional, List, Dict, Any
+from typing import TypedDict, Optional, List, Dict, Any, Annotated
+from langgraph.graph.message import AnyMessage, add_messages
 
 
 class ConversationState(TypedDict):
     """Состояние основного графа диалога"""
-    message: str                                    # Исходное сообщение пользователя
-    chat_id: Optional[str]                         # ID чата в Telegram
-    conversation_id: Optional[str]                 # ID диалога в PostgreSQL
-    history: Optional[List[Dict[str, Any]]]       # История сообщений из PostgreSQL
-    stage: Optional[str]                           # Определённая стадия диалога
-    extracted_info: Optional[dict]                 # Извлечённая информация
-    answer: str                                    # Финальный ответ пользователю
-    manager_alert: Optional[str]                   # Сообщение для менеджера (если нужно)
-    agent_name: Optional[str]                      # Имя агента, который дал ответ
-    used_tools: Optional[list]                    # Список использованных инструментов
-    tool_results: Optional[List[Dict[str, Any]]]  # Полная информация о результатах инструментов
+    messages: Annotated[list[AnyMessage], add_messages]  # История сообщений (управляется LangGraph)
+    message: str                                          # Исходное сообщение пользователя (для обратной совместимости)
+    chat_id: Optional[str]                                # ID чата в Telegram
+    conversation_id: Optional[str]                       # ID диалога в PostgreSQL
+    stage: Optional[str]                                  # Определённая стадия диалога
+    extracted_info: Optional[dict]                       # Извлечённая информация
+    answer: str                                           # Финальный ответ пользователю
+    manager_alert: Optional[str]                         # Сообщение для менеджера (если нужно)
+    agent_name: Optional[str]                            # Имя агента, который дал ответ
+    used_tools: Optional[list]                           # Список использованных инструментов
+    tool_results: Optional[List[Dict[str, Any]]]          # Полная информация о результатах инструментов
 

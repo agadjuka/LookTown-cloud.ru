@@ -320,7 +320,9 @@ def _find_and_offer_slots(
     system_prompt = _build_system_prompt(service_id, master_id, master_name, time_preference)
     
     # Получаем сообщение пользователя и историю
-    history = state.get("history") or []
+    # Преобразуем messages в history для обратной совместимости
+    messages = state.get("messages", [])
+    history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else []
     chat_id = state.get("chat_id")
     
     try:

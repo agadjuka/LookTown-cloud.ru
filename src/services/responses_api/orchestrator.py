@@ -3,6 +3,7 @@ Orchestrator для обработки диалогов через OpenAI API
 """
 import json
 from typing import List, Dict, Any, Optional
+from langchain_core.messages import trim_messages, BaseMessage
 from .client import ResponsesAPIClient
 from .tools_registry import ResponsesToolsRegistry
 from .config import ResponsesAPIConfig
@@ -163,11 +164,92 @@ class ResponsesOrchestrator:
             iteration += 1
             logger.debug(f"Итерация {iteration}: Запрос к API")
             
+            # Обрезаем историю перед вызовом LLM (оставляем последние 30 сообщений)
+            # Используем trim_messages для правильной обрезки с сохранением системных сообщений
+            try:
+                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+                
+                # Преобразуем сообщения в объекты BaseMessage
+                base_messages = []
+                for msg in messages:
+                    role = msg.get("role")
+                    content = msg.get("content", "")
+                    
+                    if role == "user":
+                        base_messages.append(HumanMessage(content=content))
+                    elif role == "assistant":
+                        ai_msg = AIMessage(content=content)
+                        # Добавляем tool_calls если есть
+                        if msg.get("tool_calls"):
+                            ai_msg.tool_calls = msg.get("tool_calls")
+                        base_messages.append(ai_msg)
+                    elif role == "tool":
+                        tool_msg = ToolMessage(
+                            content=content,
+                            tool_call_id=msg.get("tool_call_id", "")
+                        )
+                        base_messages.append(tool_msg)
+                    elif role == "system":
+                        base_messages.append(SystemMessage(content=content))
+                
+                # Обрезаем историю: последние 30 сообщений, включая системные
+                # Используем большой max_tokens, чтобы обрезка шла по количеству сообщений
+                # trim_messages с strategy="last" оставит последние сообщения
+                trimmed_messages = trim_messages(
+                    base_messages,
+                    max_tokens=100000,  # Большое значение, чтобы обрезка шла по количеству
+                    strategy="last",
+                    include_system=True,
+                    allow_partial=False,
+                )
+                
+                # Дополнительно ограничиваем до 30 сообщений (если trim_messages не сработал)
+                if len(trimmed_messages) > 30:
+                    # Сохраняем системные сообщения и берем последние 30 несистемных
+                    system_msgs = [m for m in trimmed_messages if isinstance(m, SystemMessage)]
+                    non_system_msgs = [m for m in trimmed_messages if not isinstance(m, SystemMessage)]
+                    trimmed_messages = system_msgs + non_system_msgs[-30:]
+                
+                # Если обрезка произошла, логируем
+                if len(trimmed_messages) < len(base_messages):
+                    logger.info(f"История обрезана: {len(base_messages)} -> {len(trimmed_messages)} сообщений")
+                
+                # Преобразуем обратно в словари для API
+                trimmed_dicts = []
+                for msg in trimmed_messages:
+                    msg_dict = {}
+                    
+                    # Обрабатываем разные типы сообщений
+                    if isinstance(msg, HumanMessage):
+                        msg_dict = {"role": "user", "content": msg.content}
+                    elif isinstance(msg, AIMessage):
+                        msg_dict = {"role": "assistant", "content": msg.content}
+                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                            msg_dict["tool_calls"] = msg.tool_calls
+                    elif isinstance(msg, ToolMessage):
+                        msg_dict = {
+                            "role": "tool",
+                            "content": msg.content,
+                            "tool_call_id": msg.tool_call_id
+                        }
+                    elif isinstance(msg, SystemMessage):
+                        msg_dict = {"role": "system", "content": msg.content}
+                    
+                    if msg_dict:
+                        trimmed_dicts.append(msg_dict)
+                
+                # Используем обрезанные сообщения
+                messages_to_send = trimmed_dicts
+                
+            except Exception as e:
+                logger.warning(f"Ошибка при обрезке истории: {e}, используем оригинальные сообщения")
+                messages_to_send = messages
+            
             # Запрос к модели
             try:
                 response = self.client.create_response(
                     instructions=self.instructions,
-                    input_messages=messages, # Передаем накопленные сообщения
+                    input_messages=messages_to_send,  # Передаем обрезанные сообщения
                     tools=tools_schemas if tools_schemas else None,
                 )
             except Exception as e:

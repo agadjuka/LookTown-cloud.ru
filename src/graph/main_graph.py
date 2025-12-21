@@ -14,6 +14,21 @@ from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
 
 
+def create_main_graph(langgraph_service: LangGraphService, checkpointer=None):
+    """
+    Создает и компилирует основной граф состояний
+    
+    Args:
+        langgraph_service: Сервис LangGraph
+        checkpointer: Опциональный checkpointer для сохранения состояния
+        
+    Returns:
+        Скомпилированный граф
+    """
+    main_graph = MainGraph(langgraph_service, checkpointer=checkpointer)
+    return main_graph.compiled_graph
+
+
 class MainGraph:
     """Основной граф состояний для обработки всех стадий диалога"""
     
@@ -25,7 +40,7 @@ class MainGraph:
         """Очистить кэш агентов"""
         cls._agents_cache.clear()
     
-    def __init__(self, langgraph_service: LangGraphService):
+    def __init__(self, langgraph_service: LangGraphService, checkpointer=None):
         self.langgraph_service = langgraph_service
         
         # Используем кэш для агентов
@@ -51,7 +66,7 @@ class MainGraph:
         
         # Создаём граф
         self.graph = self._create_graph()
-        self.compiled_graph = self.graph.compile()
+        self.compiled_graph = self.graph.compile(checkpointer=checkpointer)
     
     def _create_graph(self) -> StateGraph:
         """Создание графа состояний"""
@@ -88,7 +103,9 @@ class MainGraph:
         logger.info("Определение стадии диалога")
         
         message = state["message"]
-        history = state.get("history")
+        # Преобразуем messages в history для обратной совместимости с агентами
+        messages = state.get("messages", [])
+        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
         chat_id = state.get("chat_id")
         
         # Определяем стадию
@@ -196,7 +213,9 @@ class MainGraph:
         """Обработка отмены"""
         logger.info("Обработка отмены")
         message = state["message"]
-        history = state.get("history")
+        # Преобразуем messages в history для обратной совместимости с агентами
+        messages = state.get("messages", [])
+        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
         chat_id = state.get("chat_id")
         
         agent_result = self.cancel_agent(message, history, chat_id=chat_id)
@@ -206,7 +225,9 @@ class MainGraph:
         """Обработка переноса"""
         logger.info("Обработка переноса")
         message = state["message"]
-        history = state.get("history")
+        # Преобразуем messages в history для обратной совместимости с агентами
+        messages = state.get("messages", [])
+        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
         chat_id = state.get("chat_id")
         
         agent_result = self.reschedule_agent(message, history, chat_id=chat_id)
@@ -216,7 +237,9 @@ class MainGraph:
         """Обработка просмотра записей"""
         logger.info("Обработка просмотра записей")
         message = state["message"]
-        history = state.get("history")
+        # Преобразуем messages в history для обратной совместимости с агентами
+        messages = state.get("messages", [])
+        history = [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages] if messages else None
         chat_id = state.get("chat_id")
         
         agent_result = self.view_my_booking_agent(message, history, chat_id=chat_id)

@@ -239,10 +239,13 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
 BookingGraphState = Dict[str, Any]
 
 
-def create_booking_graph() -> StateGraph:
+def create_booking_graph(checkpointer=None):
     """
     Создает и компилирует граф состояний для бронирования
     
+    Args:
+        checkpointer: Опциональный checkpointer для сохранения состояния
+        
     Returns:
         Скомпилированный граф
     """
@@ -266,8 +269,8 @@ def create_booking_graph() -> StateGraph:
     workflow.add_edge("contact_collector", END)  # После contact_collector ждем ответа клиента
     workflow.add_edge("finalizer", END)  # Только finalizer завершает граф
     
-    # Компилируем граф
-    compiled_graph = workflow.compile()
+    # Компилируем граф с checkpointer
+    compiled_graph = workflow.compile(checkpointer=checkpointer)
     
     logger.info("Граф бронирования создан и скомпилирован")
     

@@ -1,18 +1,16 @@
 """
 Модуль для работы с LangGraph (OpenAI API)
 """
-import os
 import time
-import asyncio
-import json
 from datetime import datetime
 import pytz
-from typing import Optional, List, Dict, Any
 
+from langchain_core.messages import HumanMessage
 from .debug_service import DebugService
 from .logger_service import logger
-from ..graph.main_graph import MainGraph
+from ..graph.main_graph import create_main_graph
 from .langgraph_service import LangGraphService
+from ..storage.checkpointer import get_postgres_checkpointer
 import requests
 
 
@@ -25,7 +23,6 @@ class AgentService:
         
         # Ленивая инициализация LangGraph
         self._langgraph_service = None
-        self._main_graph = None
         
         # Инициализация кэша времени
         self._time_cache = None
@@ -37,13 +34,6 @@ class AgentService:
         if self._langgraph_service is None:
             self._langgraph_service = LangGraphService()
         return self._langgraph_service
-    
-    @property
-    def main_graph(self) -> MainGraph:
-        """Ленивая инициализация MainGraph"""
-        if self._main_graph is None:
-            self._main_graph = MainGraph(self.langgraph_service)
-        return self._main_graph
     
     def _get_moscow_time(self) -> str:
         """Получить текущее время и дату в московском часовом поясе через внешний API"""
@@ -91,10 +81,11 @@ class AgentService:
             return result
     
     async def send_to_agent_langgraph(self, chat_id: str, user_text: str) -> dict:
-        """Отправка сообщения через LangGraph с использованием PostgreSQL для истории"""
-        from ..graph.conversation_state import ConversationState
-        from ..storage.conversation_repo import get_conversation_repo
+        """
+        Отправка сообщения через LangGraph с использованием нативной памяти PostgreSQL
         
+        Граф сам управляет историей через checkpointer, нам нужно только передать новое сообщение.
+        """
         # Получаем telegram_user_id из chat_id (они равны для личных чатов)
         try:
             telegram_user_id = int(chat_id)
@@ -102,168 +93,79 @@ class AgentService:
             logger.error(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id")
             telegram_user_id = 0
         
-        # Получаем репозиторий
-        conversation_repo = get_conversation_repo()
-        
-        # Получаем или создаём conversation_id для этого пользователя
-        conversation_id = await asyncio.to_thread(
-            conversation_repo.get_or_create_conversation,
-            telegram_user_id
-        )
-        
         # Добавляем московское время в начало сообщения
         moscow_time = self._get_moscow_time()
-        input_with_time = f"[{moscow_time}] {user_text}"
+        user_message_text = f"[{moscow_time}] {user_text}"
         
-        # Сохраняем входящее сообщение пользователя
-        await asyncio.to_thread(
-            conversation_repo.append_message,
-            conversation_id,
-            "user",
-            input_with_time
-        )
+        logger.info(f"Обработка сообщения от chat_id={chat_id}, telegram_user_id={telegram_user_id}")
         
-        # Загружаем историю последних 30 сообщений (включая только что добавленное)
-        history_messages = await asyncio.to_thread(
-            conversation_repo.load_last_messages,
-            conversation_id,
-            limit=30
-        )
-        
-        logger.info(f"Загружено {len(history_messages)} сообщений из истории для conversation_id={conversation_id}")
-        
-        # Загружаем extracted_info из последнего системного сообщения
-        extracted_info = None
-        for msg in reversed(history_messages):
-            if msg.get("role") == "system" and msg.get("content", "").startswith("EXTRACTED_INFO:"):
-                try:
-                    extracted_info_json = msg["content"].replace("EXTRACTED_INFO:", "").strip()
-                    extracted_info = json.loads(extracted_info_json)
-                    logger.debug(f"Загружен extracted_info из истории: {extracted_info}")
-                    break
-                except (json.JSONDecodeError, KeyError) as e:
-                    logger.warning(f"Ошибка при загрузке extracted_info из истории: {e}")
-                    break
-        
-        # Создаём начальное состояние
-        initial_state: ConversationState = {
-            "message": input_with_time,
-            "chat_id": chat_id,
-            "conversation_id": conversation_id,
-            "history": history_messages,  # Передаём историю в граф
-            "stage": None,
-            "extracted_info": extracted_info,
-            "answer": "",
-            "manager_alert": None
-        }
-        
-        # Выполняем граф
-        result_state = await asyncio.to_thread(
-            self.main_graph.compiled_graph.invoke,
-            initial_state
-        )
-        
-        # Извлекаем ответ
-        answer = result_state.get("answer", "")
-        manager_alert = result_state.get("manager_alert")
-        
-        # Сохраняем ответ ассистента в Postgres
-        if answer:
-            await asyncio.to_thread(
-                conversation_repo.append_message,
-                conversation_id,
-                "assistant",
-                answer
-            )
-        
-        # Сохраняем результаты инструментов в БД, если были
-        tool_results = result_state.get("tool_results", [])
-        if tool_results:
-            for tool_result in tool_results:
-                try:
-                    # Формируем содержимое для сохранения
-                    tool_name = tool_result.get("name", "Unknown")
-                    tool_args = tool_result.get("args", {})
-                    tool_result_value = tool_result.get("result", "")
-                    
-                    # Форматируем результат
-                    if isinstance(tool_result_value, (dict, list)):
-                        result_str = json.dumps(tool_result_value, ensure_ascii=False, indent=2)
-                    else:
-                        result_str = str(tool_result_value)
-                    
-                    # Формируем сообщение с информацией об инструменте
-                    tool_content = f"Tool: {tool_name}\n"
-                    if tool_args:
-                        args_str = json.dumps(tool_args, ensure_ascii=False, indent=2)
-                        tool_content += f"Args: {args_str}\n"
-                    tool_content += f"Result: {result_str}"
-                    
-                    # Сохраняем с ролью "tool"
-                    await asyncio.to_thread(
-                        conversation_repo.append_message,
-                        conversation_id,
-                        "tool",
-                        tool_content
-                    )
-                    logger.debug(f"Сохранен результат инструмента {tool_name} в БД")
-                except Exception as e:
-                    logger.warning(f"Ошибка при сохранении результата инструмента: {e}")
-        
-        # Сохраняем информацию о tool-вызовах, если были (для обратной совместимости)
-        used_tools = result_state.get("used_tools", [])
-        if used_tools:
-            tools_info = f"Tools used: {', '.join(used_tools)}"
-            await asyncio.to_thread(
-                conversation_repo.append_message,
-                conversation_id,
-                "system",
-                tools_info,
-                {"tools": used_tools}
-            )
-        
-        # Сохраняем extracted_info в системное сообщение для следующего вызова
-        extracted_info = result_state.get("extracted_info")
-        if extracted_info:
-            try:
-                extracted_info_json = json.dumps(extracted_info, ensure_ascii=False)
-                await asyncio.to_thread(
-                    conversation_repo.append_message,
-                    conversation_id,
-                    "system",
-                    f"EXTRACTED_INFO:{extracted_info_json}"
-                )
-                logger.debug(f"Сохранен extracted_info в системное сообщение")
-            except Exception as e:
-                logger.warning(f"Ошибка при сохранении extracted_info: {e}")
-        
-        # Нормализуем даты и время в ответе
-        from .date_normalizer import normalize_dates_in_text
-        from .time_normalizer import normalize_times_in_text
-        from .link_converter import convert_yclients_links_in_text
-        
-        answer = normalize_dates_in_text(answer)
-        answer = normalize_times_in_text(answer)
-        answer = convert_yclients_links_in_text(answer)
-        
-        result = {"user_message": answer}
-        if manager_alert:
-            manager_alert = normalize_dates_in_text(manager_alert)
-            manager_alert = normalize_times_in_text(manager_alert)
-            manager_alert = convert_yclients_links_in_text(manager_alert)
-            result["manager_alert"] = manager_alert
-        
-        return result
+        try:
+            # Используем checkpointer для работы с нативной памятью LangGraph
+            async with get_postgres_checkpointer() as checkpointer:
+                # Создаем граф с checkpointer
+                app = create_main_graph(self.langgraph_service, checkpointer=checkpointer)
+                
+                # Используем ID пользователя как thread_id для изоляции сессий
+                config = {"configurable": {"thread_id": str(telegram_user_id)}}
+                
+                # Формируем входные данные - ТОЛЬКО новое сообщение
+                # История граф подтянет сам из БД через checkpointer!
+                input_data = {
+                    "messages": [HumanMessage(content=user_message_text)],
+                    "message": user_message_text,  # Для обратной совместимости с узлами
+                    "chat_id": chat_id,
+                    "stage": None,
+                    "extracted_info": None,
+                    "answer": "",
+                    "manager_alert": None
+                }
+                
+                # Запускаем граф и обрабатываем поток событий
+                # Используем ainvoke для получения финального состояния
+                # (astream используется для потоковой обработки, но нам нужен финальный результат)
+                final_state = await app.ainvoke(input_data, config)
+                
+                # Извлекаем ответ из финального состояния
+                answer = final_state.get("answer", "")
+                manager_alert = final_state.get("manager_alert")
+                
+                logger.info(f"Получен ответ от графа, длина: {len(answer)}")
+                
+                # Нормализуем даты и время в ответе
+                from .date_normalizer import normalize_dates_in_text
+                from .time_normalizer import normalize_times_in_text
+                from .link_converter import convert_yclients_links_in_text
+                
+                answer = normalize_dates_in_text(answer)
+                answer = normalize_times_in_text(answer)
+                answer = convert_yclients_links_in_text(answer)
+                
+                result = {"user_message": answer}
+                if manager_alert:
+                    manager_alert = normalize_dates_in_text(manager_alert)
+                    manager_alert = normalize_times_in_text(manager_alert)
+                    manager_alert = convert_yclients_links_in_text(manager_alert)
+                    result["manager_alert"] = manager_alert
+                
+                return result
+                
+        except Exception as e:
+            logger.error(f"Ошибка при обработке сообщения через LangGraph: {e}", exc_info=True)
+            return {
+                "user_message": "Извините, произошла ошибка при обработке вашего сообщения. Пожалуйста, попробуйте еще раз."
+            }
     
     async def send_to_agent(self, chat_id: str, user_text: str) -> dict:
         """Отправка сообщения агенту через LangGraph"""
         return await self.send_to_agent_langgraph(chat_id, user_text)
     
     async def reset_context(self, chat_id: str):
-        """Сброс контекста для чата"""
+        """
+        Сброс контекста для чата через обновление состояния в checkpointer
+        
+        Очищает историю сообщений для пользователя, создавая новый thread_id или очищая messages.
+        """
         try:
-            from ..storage.conversation_repo import get_conversation_repo
-            
             # Получаем telegram_user_id из chat_id
             try:
                 telegram_user_id = int(chat_id)
@@ -271,13 +173,37 @@ class AgentService:
                 logger.error(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id")
                 telegram_user_id = 0
             
-            # Создаём новый диалог в Postgres (старый останется в базе)
-            conversation_repo = get_conversation_repo()
-            new_conversation_id = await asyncio.to_thread(
-                conversation_repo.create_new_conversation,
-                telegram_user_id
-            )
-            # Логирование создания диалога уже есть в conversation_repo
+            logger.info(f"Сброс контекста для chat_id={chat_id}, telegram_user_id={telegram_user_id}")
+            
+            async with get_postgres_checkpointer() as checkpointer:
+                # Создаем граф с checkpointer
+                app = create_main_graph(self.langgraph_service, checkpointer=checkpointer)
+                
+                # Используем ID пользователя как thread_id
+                config = {"configurable": {"thread_id": str(telegram_user_id)}}
+                
+                # Очищаем список сообщений в состоянии
+                # Используем update_state для очистки messages
+                try:
+                    # Получаем текущее состояние
+                    current_state = await app.aget_state(config)
+                    
+                    if current_state and current_state.values:
+                        # Очищаем messages через update_state
+                        # Используем специальный метод для очистки messages
+                        await app.aupdate_state(
+                            config,
+                            {"messages": []}
+                        )
+                        logger.info(f"Контекст очищен для telegram_user_id={telegram_user_id}")
+                    else:
+                        logger.info(f"Состояние не найдено для telegram_user_id={telegram_user_id}, очистка не требуется")
+                        
+                except Exception as e:
+                    logger.warning(f"Ошибка при очистке состояния через update_state: {e}")
+                    # Альтернативный вариант: просто логируем, что контекст будет сброшен
+                    # при следующем сообщении (новый thread_id или пустое состояние)
+                    logger.info(f"Контекст будет сброшен при следующем сообщении для telegram_user_id={telegram_user_id}")
             
             # Очищаем историю результатов инструментов
             try:
@@ -287,7 +213,6 @@ class AgentService:
                 logger.debug(f"История результатов инструментов очищена для chat_id={chat_id}")
             except Exception as e:
                 logger.debug(f"Ошибка при очистке истории результатов инструментов: {e}")
-            
-            # Логирование успеха уже есть в bot.py
+                
         except Exception as e:
-            logger.error("Ошибка при сбросе контекста", str(e))
+            logger.error(f"Ошибка при сбросе контекста: {e}", exc_info=True)
