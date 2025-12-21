@@ -3,7 +3,7 @@
 """
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history
+from ...utils import messages_to_history, orchestrator_messages_to_langgraph
 from ..state import BookingSubState
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
@@ -150,10 +150,32 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         reply = result.get("reply", "")
         tool_calls = result.get("tool_calls", [])
         
+        # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+        new_messages_dicts = result.get("new_messages", [])
+        new_messages = orchestrator_messages_to_langgraph(new_messages_dicts) if new_messages_dicts else []
+        
+        logger.info(f"Service manager сгенерировал {len(new_messages)} новых сообщений")
+        # Детальное логирование для отладки ToolMessage
+        tool_messages_count = 0
+        for i, msg in enumerate(new_messages):
+            msg_type = getattr(msg, "type", "unknown")
+            content_preview = str(getattr(msg, "content", ""))[:100]
+            logger.info(f"  [{i}] Type: {msg_type}, Content: {content_preview}...")
+            if msg_type == "tool":
+                tool_messages_count += 1
+                tool_call_id = getattr(msg, "tool_call_id", "N/A")
+                logger.info(f"      ✅ TOOL MESSAGE! tool_call_id={tool_call_id}")
+            elif msg_type == "ai" and hasattr(msg, "tool_calls") and msg.tool_calls:
+                logger.info(f"      ✅ AIMessage с {len(msg.tool_calls)} tool_calls")
+        
+        if tool_messages_count == 0 and tool_calls:
+            logger.warning(f"⚠️ ПРОБЛЕМА: Были tool_calls ({len(tool_calls)}), но нет ToolMessage в new_messages!")
+        
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
             logger.info("CallManager был вызван в service_manager_node")
             return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": result.get("reply", ""),
                 "manager_alert": result.get("manager_alert"),
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
@@ -167,6 +189,7 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         logger.info(f"Использованные инструменты: {used_tools}")
         
         return {
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
             "answer": reply,
             "used_tools": used_tools,
             "tool_results": tool_calls if tool_calls else []

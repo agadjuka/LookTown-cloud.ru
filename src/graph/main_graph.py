@@ -15,17 +15,22 @@ from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
 
 
-def create_main_graph(langgraph_service: LangGraphService, checkpointer=None):
+def create_main_graph(langgraph_service: LangGraphService, checkpointer):
     """
     Создает и компилирует основной граф состояний
     
     Args:
         langgraph_service: Сервис LangGraph
-        checkpointer: Опциональный checkpointer для сохранения состояния
+        checkpointer: Обязательный checkpointer для сохранения состояния в PostgreSQL
         
     Returns:
         Скомпилированный граф
+        
+    Raises:
+        ValueError: Если checkpointer не передан
     """
+    if checkpointer is None:
+        raise ValueError("checkpointer обязателен для работы с PostgreSQL. Граф должен компилироваться с checkpointer.")
     main_graph = MainGraph(langgraph_service, checkpointer=checkpointer)
     return main_graph.compiled_graph
 
@@ -41,17 +46,34 @@ class MainGraph:
         """Очистить кэш агентов"""
         cls._agents_cache.clear()
     
-    def __init__(self, langgraph_service: LangGraphService, checkpointer=None):
+    def __init__(self, langgraph_service: LangGraphService, checkpointer):
+        """
+        Инициализация графа с обязательным checkpointer
+        
+        Args:
+            langgraph_service: Сервис LangGraph
+            checkpointer: Обязательный checkpointer для сохранения состояния в PostgreSQL
+            
+        Raises:
+            ValueError: Если checkpointer не передан
+        """
+        if checkpointer is None:
+            raise ValueError("checkpointer обязателен для работы с PostgreSQL. Граф должен компилироваться с checkpointer.")
+        
         self.langgraph_service = langgraph_service
+        # КРИТИЧНО: сохраняем checkpointer для передачи в BookingAgent при каждом вызове
+        # Это необходимо, так как checkpointer привязан к пулу соединений, который должен быть активен
+        self.checkpointer = checkpointer
         
         # Используем кэш для агентов
         cache_key = id(langgraph_service)
         
         if cache_key not in MainGraph._agents_cache:
             # Создаём агентов только если их ещё нет в кэше
+            # ВАЖНО: BookingAgent НЕ получает checkpointer при создании, он будет передаваться динамически
             MainGraph._agents_cache[cache_key] = {
                 'stage_detector': StageDetectorAgent(langgraph_service),
-                'booking': BookingAgent(langgraph_service),
+                'booking': BookingAgent(langgraph_service),  # Без checkpointer при создании
                 'cancellation_request': CancelBookingAgent(langgraph_service),
                 'reschedule': RescheduleAgent(langgraph_service),
                 'view_my_booking': ViewMyBookingAgent(langgraph_service),
@@ -67,6 +89,7 @@ class MainGraph:
         
         # Создаём граф
         self.graph = self._create_graph()
+        # КРИТИЧНО: компилируем граф С checkpointer для сохранения в PostgreSQL
         self.compiled_graph = self.graph.compile(checkpointer=checkpointer)
     
     def _create_graph(self) -> StateGraph:
@@ -120,12 +143,27 @@ class MainGraph:
             # Получаем полную информацию о tool_calls (если есть)
             tool_results = self.stage_detector._last_tool_calls if hasattr(self.stage_detector, '_last_tool_calls') and self.stage_detector._last_tool_calls else []
             
+            # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+            new_messages = self.stage_detector._last_new_messages if hasattr(self.stage_detector, '_last_new_messages') and self.stage_detector._last_new_messages else []
+            logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
+            
             return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": escalation_result.get("user_message"),
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": "StageDetectorAgent",
                 "used_tools": ["CallManager"],
                 "tool_results": tool_results,
+            }
+        
+        # КРИТИЧНО: Даже если CallManager не был вызван, возвращаем messages (если есть)
+        # Это нужно для сохранения истории сообщений от StageDetectorAgent
+        new_messages = self.stage_detector._last_new_messages if hasattr(self.stage_detector, '_last_new_messages') and self.stage_detector._last_new_messages else []
+        if new_messages:
+            logger.info(f"StageDetectorAgent сгенерировал {len(new_messages)} новых сообщений")
+            return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
+                "stage": stage_detection.stage
             }
         
         return {
@@ -169,11 +207,16 @@ class MainGraph:
             agent_name: Имя агента
             
         Returns:
-            Обновленное состояние графа
+            Обновленное состояние графа с messages из orchestrator
         """
         # Получаем полную информацию о tool_calls (не только имена)
         tool_results = agent._last_tool_calls if hasattr(agent, '_last_tool_calls') and agent._last_tool_calls else []
         used_tools = [tool["name"] for tool in tool_results] if tool_results else []
+        
+        # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+        new_messages = agent._last_new_messages if hasattr(agent, '_last_new_messages') and agent._last_new_messages else []
+        
+        logger.info(f"{agent_name} сгенерировал {len(new_messages)} новых сообщений")
         
         # Агент теперь возвращает просто строку (ответ)
         answer_text = answer
@@ -186,6 +229,7 @@ class MainGraph:
             logger.info(f"CallManager был вызван через инструмент в агенте {agent_name}, chat_id: {chat_id}")
             
             return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": escalation_result.get("user_message"),
                 "manager_alert": escalation_result.get("manager_alert"),
                 "agent_name": agent_name,
@@ -197,6 +241,7 @@ class MainGraph:
         answer = answer_text
         
         return {
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
             "answer": answer,
             "agent_name": agent_name,
             "used_tools": used_tools,
@@ -207,8 +252,9 @@ class MainGraph:
         """Обработка бронирования через граф состояний"""
         logger.info("Обработка бронирования через граф")
         
-        # Используем новый метод process_booking, который работает с графом
-        return self.booking_agent.process_booking(state)
+        # КРИТИЧНО: передаем checkpointer в process_booking для создания графа с активным пулом
+        # Это необходимо, так как checkpointer привязан к пулу соединений, который должен быть активен
+        return self.booking_agent.process_booking(state, checkpointer=self.checkpointer)
     
     def _handle_cancellation_request(self, state: ConversationState) -> ConversationState:
         """Обработка отмены"""

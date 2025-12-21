@@ -1,8 +1,9 @@
 """
 Граф состояний для подграфа бронирования (Booking Subgraph)
 """
-from typing import Dict, Any, Literal
+from typing import Dict, Any, Literal, TypedDict, Annotated
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import AnyMessage, add_messages
 from ..conversation_state import ConversationState
 from .state import BookingSubState
 from .analyzer import booking_analyzer_node
@@ -114,8 +115,28 @@ def _create_booking_state_adapter(original_node):
         # Вызываем оригинальный узел
         result = original_node(full_conversation_state)
         
+        # КРИТИЧНО: Правильно объединяем messages через add_messages логику
+        # Если в result есть messages, добавляем их к существующим (не заменяем!)
+        existing_messages = full_conversation_state.get("messages", [])
+        new_messages = result.get("messages", [])
+        
+        # Объединяем messages: существующие + новые (add_messages логика)
+        if new_messages:
+            # Используем add_messages reducer логику: добавляем новые к существующим
+            combined_messages = list(existing_messages) + list(new_messages)
+            logger.info(f"Адаптер: объединяю messages: {len(existing_messages)} существующих + {len(new_messages)} новых = {len(combined_messages)} всего")
+            # Логируем ToolMessage для отладки
+            tool_messages_in_new = sum(1 for m in new_messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
+            if tool_messages_in_new > 0:
+                logger.info(f"Адаптер: в новых messages найдено {tool_messages_in_new} ToolMessage")
+        else:
+            combined_messages = existing_messages
+            logger.debug(f"Адаптер: новых messages нет, оставляю {len(existing_messages)} существующих")
+        
         # Обновляем conversation_state с результатами узла
         updated_conversation_state = {**full_conversation_state, **result}
+        # КРИТИЧНО: Устанавливаем объединенные messages
+        updated_conversation_state["messages"] = combined_messages
         
         # Извлекаем обновленное BookingSubState
         updated_booking_state = _conversation_state_to_booking_substate(
@@ -236,19 +257,28 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
 
 
 # Определяем тип состояния для графа
-BookingGraphState = Dict[str, Any]
+# КРИТИЧНО: Используем TypedDict с add_messages для правильного сохранения ToolMessage
+class BookingGraphState(TypedDict):
+    """Состояние графа бронирования"""
+    booking: BookingSubState
+    conversation: ConversationState  # Включает messages с add_messages reducer
 
 
-def create_booking_graph(checkpointer=None):
+def create_booking_graph(checkpointer):
     """
     Создает и компилирует граф состояний для бронирования
     
     Args:
-        checkpointer: Опциональный checkpointer для сохранения состояния
+        checkpointer: Обязательный checkpointer для сохранения состояния в PostgreSQL
         
     Returns:
         Скомпилированный граф
+        
+    Raises:
+        ValueError: Если checkpointer не передан
     """
+    if checkpointer is None:
+        raise ValueError("checkpointer обязателен для работы с PostgreSQL. Граф бронирования должен компилироваться с checkpointer.")
     logger.info("Создание графа бронирования")
     
     # Создаем граф

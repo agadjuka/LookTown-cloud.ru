@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history
+from ...utils import messages_to_history, orchestrator_messages_to_langgraph
 from ..state import BookingSubState
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
@@ -352,10 +352,17 @@ def _find_and_offer_slots(
         reply = result.get("reply", "")
         tool_calls = result.get("tool_calls", [])
         
+        # КРИТИЧНО: Получаем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+        new_messages_dicts = result.get("new_messages", [])
+        new_messages = orchestrator_messages_to_langgraph(new_messages_dicts) if new_messages_dicts else []
+        
+        logger.info(f"Slot manager сгенерировал {len(new_messages)} новых сообщений")
+        
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
             logger.info("CallManager был вызван в slot_manager_node")
             return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": result.get("reply", ""),
                 "manager_alert": result.get("manager_alert"),
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
@@ -369,6 +376,7 @@ def _find_and_offer_slots(
         logger.info(f"Использованные инструменты: {used_tools}")
         
         return {
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
             "answer": reply,
             "used_tools": used_tools,
             "tool_results": tool_calls if tool_calls else []

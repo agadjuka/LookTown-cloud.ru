@@ -80,18 +80,30 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
     
     try:
         # Подготавливаем историю для контекста
+        # ВАЖНО: Передаем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста
         input_messages = []
         if history:
-            # Берем последние несколько сообщений для контекста
-            recent_history = history[-6:] if len(history) > 6 else history
-            input_messages = [
-                {
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", "")
+            # Берем последние 15 сообщений для контекста (увеличено для лучшего контекста)
+            recent_history = history[-15:] if len(history) > 15 else history
+            for msg in recent_history:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                
+                # ВАЖНО: НЕ фильтруем по ролям - передаем ВСЕ типы сообщений
+                # Пропускаем только полностью пустые сообщения (без content и без tool_calls)
+                # Но для tool сообщений content может быть пустым, но они все равно важны
+                if not content and role != "tool":
+                    continue
+                
+                # Добавляем ВСЕ сообщения: user, assistant, tool, system
+                msg_dict = {
+                    "role": role,
+                    "content": content
                 }
-                for msg in recent_history
-                if msg.get("content")
-            ]
+                # КРИТИЧНО: Для tool сообщений обязательно добавляем tool_call_id
+                if role == "tool" and msg.get("tool_call_id"):
+                    msg_dict["tool_call_id"] = msg.get("tool_call_id")
+                input_messages.append(msg_dict)
         
         # Добавляем последнее сообщение пользователя
         input_messages.append({
@@ -113,14 +125,24 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
         
         logger.info(f"Contact collector ответил: {reply[:100]}...")
         
+        # КРИТИЧНО: Создаем AIMessage для сохранения в истории LangGraph
+        from langchain_core.messages import AIMessage
+        new_messages = [AIMessage(content=reply)]
+        
         return {
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем сообщение для сохранения в истории
             "answer": reply
         }
         
     except Exception as e:
         logger.error(f"Ошибка в contact_collector_node: {e}", exc_info=True)
+        error_message = "Извините, произошла ошибка при сборе контактных данных. Попробуйте еще раз."
+        # КРИТИЧНО: Создаем AIMessage даже при ошибке для сохранения в истории
+        from langchain_core.messages import AIMessage
+        new_messages = [AIMessage(content=error_message)]
         return {
-            "answer": "Извините, произошла ошибка при сборе контактных данных. Попробуйте еще раз."
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем сообщение для сохранения в истории
+            "answer": error_message
         }
 
 

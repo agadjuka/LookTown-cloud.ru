@@ -14,11 +14,14 @@ class BookingAgent(BaseAgent):
     """Агент для работы с бронированиями"""
     
     def __init__(self, langgraph_service: LangGraphService):
+        """
+        Инициализация агента бронирования
+        
+        Args:
+            langgraph_service: Сервис LangGraph
+        """
         # Сохраняем langgraph_service для создания графа
         self.langgraph_service = langgraph_service
-        
-        # Создаем граф бронирования (ленивая инициализация)
-        self._booking_graph = None
         
         # Инициализируем BaseAgent с пустыми инструментами (они теперь в узлах графа)
         super().__init__(
@@ -28,26 +31,27 @@ class BookingAgent(BaseAgent):
             agent_name="Агент бронирования"
         )
     
-    @property
-    def booking_graph(self):
-        """Ленивая инициализация графа бронирования"""
-        if self._booking_graph is None:
-            self._booking_graph = create_booking_graph()
-        return self._booking_graph
-    
-    def process_booking(self, state: ConversationState) -> ConversationState:
+    def process_booking(self, state: ConversationState, checkpointer) -> ConversationState:
         """
         Обработка бронирования через граф состояний
         
         Args:
             state: Текущее состояние диалога
+            checkpointer: Checkpointer для сохранения состояния в PostgreSQL
+                         Должен быть передан из MainGraph, так как привязан к активному пулу соединений
             
         Returns:
             Обновленное состояние диалога с ответом и обновленными данными бронирования
         """
+        if checkpointer is None:
+            raise ValueError("checkpointer обязателен для работы с PostgreSQL. Должен быть передан из MainGraph.")
+        
         logger.info("Запуск обработки бронирования через граф")
         
         try:
+            # КРИТИЧНО: создаем граф динамически с checkpointer, который привязан к активному пулу
+            # Не кэшируем граф, так как checkpointer привязан к пулу, который может быть закрыт
+            booking_graph = create_booking_graph(checkpointer=checkpointer)
             # Извлекаем текущее состояние бронирования из extracted_info
             extracted_info = state.get("extracted_info") or {}
             booking_data = extracted_info.get("booking", {})
@@ -68,14 +72,39 @@ class BookingAgent(BaseAgent):
             
             logger.debug(f"Начальное booking_state для графа: {booking_state}")
             
+            # КРИТИЧНО: Проверяем, что messages передаются в booking граф
+            messages = state.get("messages", [])
+            logger.info(f"BookingAgent: передаю {len(messages)} messages в booking граф")
+            tool_messages_count = sum(1 for m in messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
+            if tool_messages_count > 0:
+                logger.info(f"BookingAgent: передаю {tool_messages_count} ToolMessage в booking граф")
+            
             # Создаем состояние для графа (с booking и conversation)
             graph_state = {
                 "booking": booking_state,
-                "conversation": state
+                "conversation": state  # Включает messages с ToolMessage
             }
             
-            # Запускаем граф
-            result_state = self.booking_graph.invoke(graph_state)
+            # КРИТИЧНО: извлекаем chat_id из состояния и создаем config с thread_id
+            # Это необходимо для работы checkpointer с PostgreSQL
+            chat_id = state.get("chat_id")
+            if not chat_id:
+                raise ValueError("chat_id обязателен для работы с checkpointer")
+            
+            # Преобразуем chat_id в telegram_user_id (они равны для личных чатов)
+            try:
+                telegram_user_id = int(chat_id)
+            except (ValueError, TypeError):
+                logger.warning(f"Не удалось преобразовать chat_id={chat_id} в telegram_user_id, используем как есть")
+                telegram_user_id = chat_id
+            
+            # Создаем config с thread_id для checkpointer
+            # КРИТИЧНО: thread_id обязателен для работы checkpointer с PostgreSQL
+            config = {"configurable": {"thread_id": str(telegram_user_id)}}
+            
+            # Запускаем граф с config для сохранения состояния в PostgreSQL
+            # LangGraph автоматически обработает синхронный вызов с асинхронным checkpointer
+            result_state = booking_graph.invoke(graph_state, config=config)
             
             # Извлекаем обновленное состояние бронирования
             updated_booking_state = result_state.get("booking", booking_state)
@@ -104,9 +133,18 @@ class BookingAgent(BaseAgent):
             used_tools = updated_conversation_state.get("used_tools")
             tool_results = updated_conversation_state.get("tool_results")
             
+            # КРИТИЧНО: Извлекаем messages из updated_conversation_state (включая ToolMessage из узлов)
+            updated_messages = updated_conversation_state.get("messages", state.get("messages", []))
+            logger.info(f"BookingAgent: извлечено {len(updated_messages)} messages из booking графа")
+            # Логируем ToolMessage для отладки
+            tool_messages_count = sum(1 for m in updated_messages if getattr(m, "type", None) == "tool" or (isinstance(m, dict) and m.get("role") == "tool"))
+            if tool_messages_count > 0:
+                logger.info(f"BookingAgent: найдено {tool_messages_count} ToolMessage в updated_messages")
+            
             # Создаем обновленное ConversationState
             updated_state: ConversationState = {
                 **state,
+                "messages": updated_messages,  # КРИТИЧНО: Используем messages из booking графа (с ToolMessage)
                 "extracted_info": updated_extracted_info,
                 "answer": answer,
                 "manager_alert": manager_alert,

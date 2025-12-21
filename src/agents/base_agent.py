@@ -53,6 +53,9 @@ class BaseAgent:
         # Результат CallManager (если был вызван)
         self._call_manager_result = None
         
+        # КРИТИЧНО: Сохраняем новые сообщения из orchestrator для передачи в LangGraph
+        self._last_new_messages = []
+        
     def __call__(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> str:
         """
         Выполнение запроса к агенту
@@ -63,9 +66,10 @@ class BaseAgent:
         :return: Ответ агента
         """
         try:
-            # Очищаем предыдущие tool_calls
+            # Очищаем предыдущие tool_calls и сообщения
             self._last_tool_calls = []
             self._call_manager_result = None
+            self._last_new_messages = []
             
             # Логируем сообщение пользователя
             llm_request_logger.start_new_request()
@@ -90,6 +94,13 @@ class BaseAgent:
             
             # Выполняем запрос через orchestrator
             result = self.orchestrator.run_turn(message, history, chat_id=chat_id)
+            
+            # КРИТИЧНО: Сохраняем все новые сообщения из orchestrator (включая AIMessage с tool_calls и ToolMessage)
+            new_messages_dicts = result.get("new_messages", [])
+            if new_messages_dicts:
+                # Преобразуем в формат LangGraph
+                from ..graph.utils import orchestrator_messages_to_langgraph
+                self._last_new_messages = orchestrator_messages_to_langgraph(new_messages_dicts)
             
             # Сохраняем tool_calls
             if result.get("tool_calls"):

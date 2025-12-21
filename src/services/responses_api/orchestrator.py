@@ -48,13 +48,18 @@ class ResponsesOrchestrator:
         
         # Формируем messages для первого запроса к API
         # История теперь приходит из LangGraph messages, которые уже нормализованы
-        # Просто копируем историю и добавляем текущее сообщение
+        # ВАЖНО: Копируем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста
         messages = []
         if history:
-            # Копируем историю (она уже нормализована из LangGraph)
-            messages = [msg.copy() for msg in history if msg.get("role") != "system"]
+            # Копируем ВСЮ историю без фильтрации по ролям
+            # Это критично для видимости ToolMessage (результаты инструментов) и AIMessage (ответы бота)
+            messages = [msg.copy() for msg in history]
         
-        # Добавляем текущее сообщение пользователя
+        # Сохраняем количество сообщений из истории для определения новых сообщений
+        # ВАЖНО: user_message НЕ включаем в new_messages, так как он уже есть в state["messages"]
+        history_length = len(messages)
+        
+        # Добавляем текущее сообщение пользователя (для работы orchestrator, но не включаем в new_messages)
         messages.append({
             "role": "user",
             "content": user_message
@@ -153,10 +158,13 @@ class ResponsesOrchestrator:
                 # Если это первая итерация и произошла ошибка, возвращаем сообщение об ошибке
                 if iteration == 1:
                     error_message = "Извините, произошла техническая ошибка. Пожалуйста, попробуйте еще раз через несколько секунд."
+                    # При ошибке новых сообщений нет (исключаем user_message, так как он уже есть в state["messages"])
+                    new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
                     return {
                         "reply": error_message,
                         "tool_calls": tool_calls_info,
                         "raw_response": None,
+                        "new_messages": new_messages,  # КРИТИЧНО: Все новые сообщения
                     }
                 break
             
@@ -227,11 +235,15 @@ class ResponsesOrchestrator:
                             escalation_result = e.escalation_result
                             logger.info(f"CallManager вызван через инструмент {func_name}")
                             
+                            # Извлекаем новые сообщения до момента вызова CallManager
+                            # Исключаем user_message, так как он уже есть в state["messages"]
+                            new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
                             return {
                                 "reply": escalation_result.get("user_message"),
                                 "tool_calls": tool_calls_info,
                                 "call_manager": True,
                                 "manager_alert": escalation_result.get("manager_alert"),
+                                "new_messages": new_messages,  # КРИТИЧНО: Все новые сообщения
                             }
                         
                         logger.error(f"Ошибка при вызове инструмента {func_name}: {e}", exc_info=True)
@@ -271,8 +283,24 @@ class ResponsesOrchestrator:
             logger.warning("Получен пустой ответ от API")
             reply_text = "Извините, не удалось получить ответ. Пожалуйста, попробуйте еще раз."
         
+        # КРИТИЧНО: Извлекаем только НОВЫЕ сообщения (те, что были добавлены в ходе этого вызова)
+        # Это все сообщения после истории (начиная с history_length + 1, чтобы исключить user_message)
+        # user_message уже есть в state["messages"], поэтому его не включаем
+        new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
+        
+        logger.debug(f"Возвращаем {len(new_messages)} новых сообщений из orchestrator")
+        # Детальное логирование для отладки ToolMessage
+        for i, msg in enumerate(new_messages):
+            role = msg.get("role", "unknown")
+            logger.debug(f"  new_messages[{i}]: role={role}, content_preview={str(msg.get('content', ''))[:100]}")
+            if role == "tool":
+                logger.debug(f"      ✅ TOOL MESSAGE! tool_call_id={msg.get('tool_call_id', 'N/A')}")
+            elif role == "assistant" and msg.get("tool_calls"):
+                logger.debug(f"      ✅ AIMessage с {len(msg.get('tool_calls', []))} tool_calls")
+        
         return {
             "reply": reply_text,
             "tool_calls": tool_calls_info,
             "raw_response": response if 'response' in locals() else None,
+            "new_messages": new_messages,  # КРИТИЧНО: Все новые сообщения (AIMessage с tool_calls и ToolMessage)
         }

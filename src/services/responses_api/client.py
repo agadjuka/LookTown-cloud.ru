@@ -161,9 +161,8 @@ class ResponsesAPIClient:
         # Валидируем и нормализуем роль
         role = self._validate_and_normalize_role(message.get("role", "user"))
         
-        # Пропускаем system сообщения (они уже добавлены как system prompt)
-        if role == "system":
-            return None
+        # ВАЖНО: НЕ фильтруем system сообщения - передаем ВСЕ типы сообщений для полного контекста
+        # System сообщения из истории могут содержать важный контекст диалога
         
         # Нормализуем content
         content = self._normalize_text(message.get("content", ""))
