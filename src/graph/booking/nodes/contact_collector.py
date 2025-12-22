@@ -65,33 +65,18 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
     except:
         slot_time_formatted = slot_time
     
-    # Формируем контекст с известными данными
-    context_parts = []
-    if client_name:
-        context_parts.append(f"- Имя клиента: {client_name}")
-    if client_phone:
-        context_parts.append(f"- Номер телефона клиента: {client_phone}")
-    
-    context_section = ""
-    if context_parts:
-        context_section = "\n\nКОНТЕКСТ:\n" + "\n".join(context_parts) + "\n"
-    
-    # Формируем инструкцию в зависимости от того, что известно
-    instruction_text = "Тебе нужно получить имя и номер телефона клиента."
-    if client_name and not client_phone:
-        instruction_text = f"Тебе нужно получить номер телефона клиента. Имя клиента уже известно: {client_name}."
-    elif client_phone and not client_name:
-        instruction_text = f"Тебе нужно получить имя клиента. Номер телефона уже известен: {client_phone}."
-    
     # Формируем системный промпт согласно ТЗ
     system_prompt = f"""Ты — AI-администратор салона LookTown. 
 Твой стиль: дружелюбный, профессиональный, краткий.
 
-ИНСТРУКЦИЯ:
-{instruction_text}
+ТЕКУЩИЕ ДАННЫЕ:
+- Дата и время записи: {slot_time_formatted}
 
-{context_section}ТВОЯ ФОРМУЛИРОВКА (Используй от шаблон):
-"Хорошо, пожалуйста, напишите ваше имя и номер телефона." (если одно из данных известно, проси только неизвестное)
+ИНСТРУКЦИЯ:
+Тебе нужно получить имя и номер телефона клиента.
+
+ТВОЯ ФОРМУЛИРОВКА (Используй этот шаблон):
+"Хорошо, пожалуйста, напишите ваше имя и номер телефона."
 """
     
     try:
