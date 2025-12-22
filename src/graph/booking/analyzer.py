@@ -107,14 +107,13 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
     response_content = None
     try:
         # Создаем клиент и делаем запрос
-        client = ResponsesAPIClient(ResponsesAPIConfig())
+        config = ResponsesAPIConfig()
+        client = ResponsesAPIClient(config)
         
         try:
             response = client.create_response(
                 instructions=system_prompt,
-                input_messages=input_messages,
-                temperature=0.1,  # Низкая температура для более точного извлечения
-                max_output_tokens=500
+                input_messages=input_messages
             )
         except Exception as e:
             logger.error(f"Ошибка при запросе к API в analyzer: {e}", exc_info=True)

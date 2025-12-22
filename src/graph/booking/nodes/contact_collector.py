@@ -113,12 +113,11 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
         })
         
         # Создаем клиент и делаем запрос (без инструментов)
-        client = ResponsesAPIClient(ResponsesAPIConfig())
+        config = ResponsesAPIConfig()
+        client = ResponsesAPIClient(config)
         response = client.create_response(
             instructions=system_prompt,
-            input_messages=input_messages,
-            temperature=0.1,
-            max_output_tokens=200
+            input_messages=input_messages
         )
         
         # Получаем ответ от LLM

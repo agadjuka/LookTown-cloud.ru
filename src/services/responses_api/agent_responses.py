@@ -70,10 +70,11 @@ def create_responses_agent() -> ResponsesOrchestrator:
     
     tools_registry.register_tools_from_list(all_tools)
     
-    # Создаём orchestrator
+    # Создаём orchestrator с конфигурацией
     orchestrator = ResponsesOrchestrator(
         instructions=ASSISTANT_INSTRUCTIONS,
         tools_registry=tools_registry,
+        config=config
     )
     
     return orchestrator
