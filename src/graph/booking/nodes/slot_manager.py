@@ -185,16 +185,45 @@ def _verify_slot_time_availability(
         
         # Вызываем find_slots_by_period для проверки конкретного времени
         # Если указан master_id или master_name, проверка будет только для этого мастера
-        result = asyncio.run(
-            find_slots_by_period(
-                yclients_service=yclients_service,
-                service_id=service_id,
-                time_period=time_str,  # Конкретное время для проверки
-                master_name=master_name,
-                master_id=master_id,
-                date=date_str
+        # Проверяем, есть ли уже запущенный event loop
+        try:
+            loop = asyncio.get_running_loop()
+            # Event loop уже запущен - создаем новый event loop в отдельном потоке
+            import concurrent.futures
+            
+            def run_in_thread():
+                """Запускает асинхронную функцию в новом event loop в отдельном потоке"""
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(
+                        find_slots_by_period(
+                            yclients_service=yclients_service,
+                            service_id=service_id,
+                            time_period=time_str,
+                            master_name=master_name,
+                            master_id=master_id,
+                            date=date_str
+                        )
+                    )
+                finally:
+                    new_loop.close()
+            
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(run_in_thread)
+                result = future.result()
+        except RuntimeError:
+            # Event loop не запущен, можно использовать asyncio.run
+            result = asyncio.run(
+                find_slots_by_period(
+                    yclients_service=yclients_service,
+                    service_id=service_id,
+                    time_period=time_str,  # Конкретное время для проверки
+                    master_name=master_name,
+                    master_id=master_id,
+                    date=date_str
+                )
             )
-        )
         
         if result.get('error'):
             logger.warning(f"Ошибка при проверке доступности времени: {result['error']}")
