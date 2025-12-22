@@ -148,7 +148,7 @@ class FindSlots(BaseModel):
             if len(masters_with_results) > 1:
                 result_lines.append("Либо просто выберите время, я запишу Вас к любому доступному.")
             
-            result_lines.append("((Строго сохраняй форматирование))")
+            result_lines.append("((Строго сохраняй форматирование, в т.ч. первую строку. Если это первое сообщение клиента, не забудь поздороваться))")
             return "\n".join(result_lines).strip()
             
         except ValueError as e:
