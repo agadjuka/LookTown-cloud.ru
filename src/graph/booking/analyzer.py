@@ -41,6 +41,9 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
     # Получаем текущее состояние бронирования из extracted_info
     booking_state: Dict[str, Any] = extracted_info.get("booking", {})
     
+    # Логируем текущее состояние для отладки
+    logger.debug(f"booking_analyzer: текущее состояние booking_state: {booking_state}")
+    
     # Формируем описание текущего состояния для промпта
     current_state_details = _format_current_state(booking_state)
     
@@ -141,7 +144,10 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
             return {}
         
         # Обновляем состояние бронирования (не затираем существующие данные None-ами)
+        logger.debug(f"booking_analyzer: перед merge_booking_state, booking_state: {booking_state}")
+        logger.debug(f"booking_analyzer: extracted_data от LLM: {extracted_data}")
         updated_booking_state = merge_booking_state(booking_state, extracted_data)
+        logger.debug(f"booking_analyzer: после merge_booking_state, updated_booking_state: {updated_booking_state}")
         
         # Обновляем extracted_info
         updated_extracted_info = extracted_info.copy()

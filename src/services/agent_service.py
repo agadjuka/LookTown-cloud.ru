@@ -108,17 +108,37 @@ class AgentService:
                 # Используем ID пользователя как thread_id для изоляции сессий
                 config = {"configurable": {"thread_id": str(telegram_user_id)}}
                 
+                # Пытаемся восстановить предыдущее состояние из checkpointer
+                # чтобы сохранить extracted_info между вызовами
+                previous_extracted_info = None
+                try:
+                    # Получаем последнее состояние из checkpointer
+                    state_snapshot = await checkpointer.aget(config)
+                    if state_snapshot:
+                        previous_values = state_snapshot.values if hasattr(state_snapshot, 'values') else state_snapshot.get('values', {})
+                        previous_extracted_info = previous_values.get("extracted_info")
+                        logger.debug(f"Восстановлено extracted_info из checkpointer: {previous_extracted_info}")
+                except Exception as e:
+                    logger.debug(f"Не удалось восстановить extracted_info из checkpointer: {e}")
+                
                 # Формируем входные данные - ТОЛЬКО новое сообщение
                 # История граф подтянет сам из БД через checkpointer!
+                # extracted_info не передаем, чтобы не перезаписать восстановленное значение
                 input_data = {
                     "messages": [HumanMessage(content=user_message_text)],
                     "message": user_message_text,  # Для обратной совместимости с узлами
                     "chat_id": chat_id,
                     "stage": None,
-                    "extracted_info": None,
+                    # НЕ передаем extracted_info - оно должно восстановиться из checkpointer автоматически
+                    # Если нужно явно установить, используем previous_extracted_info
                     "answer": "",
                     "manager_alert": None
                 }
+                
+                # Если удалось восстановить extracted_info, добавляем его в input_data
+                # Это нужно, чтобы LangGraph правильно объединил состояние
+                if previous_extracted_info is not None:
+                    input_data["extracted_info"] = previous_extracted_info
                 
                 # Запускаем граф и обрабатываем поток событий
                 # Используем ainvoke для получения финального состояния

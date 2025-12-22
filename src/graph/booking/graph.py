@@ -30,16 +30,33 @@ def _conversation_state_to_booking_substate(
 ) -> BookingSubState:
     """
     Извлекает BookingSubState из ConversationState после выполнения узла.
-    Критические поля обновляются даже если значение None (для поддержки явного сброса при смене темы).
+    Критические поля обновляются только если значение не None (чтобы не затирать существующие данные).
+    Исключение: если значение явно None в extracted_data (для поддержки явного сброса при смене темы).
     """
     booking_data = (conversation_state.get("extracted_info") or {}).get("booking", {})
     updated_state = dict(current_booking_state)
     critical_fields = {"service_id", "slot_time", "master_id", "master_name", "slot_time_verified"}
     
+    logger.debug(f"_conversation_state_to_booking_substate: current_booking_state: {current_booking_state}")
+    logger.debug(f"_conversation_state_to_booking_substate: booking_data из conversation_state: {booking_data}")
+    
     for key, value in booking_data.items():
-        if key in critical_fields or (value is not None and value != ""):
+        # Для критических полей: обновляем только если значение не None
+        # Это предотвращает затирание существующих данных, когда analyzer возвращает только часть полей
+        if key in critical_fields:
+            # Обновляем критическое поле только если значение не None
+            # None значения обрабатываются в merge_booking_state для явного сброса
+            if value is not None:
+                logger.debug(f"_conversation_state_to_booking_substate: обновляем критическое поле {key} = {value}")
+                updated_state[key] = value
+            else:
+                logger.debug(f"_conversation_state_to_booking_substate: пропускаем критическое поле {key} = None (не затираем существующее значение)")
+        elif value is not None and value != "":
+            # Для некритических полей: обновляем если значение не None и не пустое
+            logger.debug(f"_conversation_state_to_booking_substate: обновляем некритическое поле {key} = {value}")
             updated_state[key] = value
     
+    logger.debug(f"_conversation_state_to_booking_substate: итоговое updated_state: {updated_state}")
     return updated_state
 
 
