@@ -35,10 +35,12 @@ class BookingAgent(BaseAgent):
         """
         Обработка бронирования через граф состояний
         
+        ВАЖНО: booking_graph использует checkpointer для сохранения состояния в базе данных.
+        Состояние хранится в BookingGraphState в checkpointer (единственный источник истины).
+        
         Args:
             state: Текущее состояние диалога
             checkpointer: Checkpointer для сохранения состояния в PostgreSQL
-                         Должен быть передан из MainGraph, так как привязан к активному пулу соединений
             
         Returns:
             Обновленное состояние диалога с ответом и обновленными данными бронирования
@@ -49,19 +51,22 @@ class BookingAgent(BaseAgent):
         logger.info("Запуск обработки бронирования через граф")
         
         try:
-            # КРИТИЧНО: создаем граф динамически с checkpointer, который привязан к активному пулу
-            # Не кэшируем граф, так как checkpointer привязан к пулу, который может быть закрыт
+            # Создаем граф с checkpointer - состояние хранится в базе данных
             booking_graph = create_booking_graph(checkpointer=checkpointer)
+            
             # Извлекаем текущее состояние бронирования из extracted_info
             booking_data = (state.get("extracted_info") or {}).get("booking", {})
             
-            # Создаем начальное BookingSubState
+            logger.info(f"Текущее состояние бронирования из extracted_info: {booking_data}")
+            
+            # Создаем начальное BookingSubState из extracted_info
             booking_state: BookingSubState = {
                 "service_id": booking_data.get("service_id"),
                 "service_name": booking_data.get("service_name"),
                 "master_id": booking_data.get("master_id"),
                 "master_name": booking_data.get("master_name"),
                 "slot_time": booking_data.get("slot_time"),
+                "slot_time_verified": booking_data.get("slot_time_verified"),
                 "client_name": booking_data.get("client_name"),
                 "client_phone": booking_data.get("client_phone"),
                 "is_finalized": booking_data.get("is_finalized", False)
@@ -88,19 +93,28 @@ class BookingAgent(BaseAgent):
             
             # Создаем config с thread_id для checkpointer
             # КРИТИЧНО: thread_id обязателен для работы checkpointer с PostgreSQL
+            # Используем тот же thread_id, что и main_graph, чтобы состояние было единым
             config = {"configurable": {"thread_id": str(telegram_user_id)}}
             
-            # Запускаем граф с config для сохранения состояния в PostgreSQL
-            # LangGraph автоматически обработает синхронный вызов с асинхронным checkpointer
+            # Запускаем граф с config - состояние сохраняется в checkpointer (база данных)
+            # LangGraph автоматически:
+            # 1. Восстановит предыдущее состояние из checkpointer
+            # 2. Объединит его с переданным graph_state (переданное имеет приоритет)
+            # 3. Выполнит граф
+            # 4. Сохранит обновленное состояние обратно в checkpointer
             result_state = booking_graph.invoke(graph_state, config=config)
             
             # Извлекаем обновленное состояние
             updated_booking_state = result_state.get("booking", booking_state)
             updated_conversation_state = result_state.get("conversation", state)
             
-            # Обновляем extracted_info с новыми данными бронирования
+            logger.info(f"Обновленное состояние бронирования из графа: {updated_booking_state}")
+            
+            # Обновляем extracted_info с новыми данными бронирования (единственное место хранения)
             updated_extracted_info = (updated_conversation_state.get("extracted_info") or {}).copy()
             updated_extracted_info["booking"] = dict(updated_booking_state)
+            
+            logger.info(f"Итоговое extracted_info после обновления: {updated_extracted_info}")
             
             # Создаем обновленное ConversationState
             updated_state: ConversationState = {

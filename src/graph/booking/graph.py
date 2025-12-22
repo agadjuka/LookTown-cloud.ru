@@ -41,16 +41,12 @@ def _conversation_state_to_booking_substate(
     logger.debug(f"_conversation_state_to_booking_substate: booking_data из conversation_state: {booking_data}")
     
     for key, value in booking_data.items():
-        # Для критических полей: обновляем только если значение не None
-        # Это предотвращает затирание существующих данных, когда analyzer возвращает только часть полей
+        # ВАЖНО: Если поле есть в booking_data, значит оно было явно обновлено (даже если None)
+        # Это позволяет явно сбрасывать поля через None (например, при смене услуги)
         if key in critical_fields:
-            # Обновляем критическое поле только если значение не None
-            # None значения обрабатываются в merge_booking_state для явного сброса
-            if value is not None:
-                logger.debug(f"_conversation_state_to_booking_substate: обновляем критическое поле {key} = {value}")
-                updated_state[key] = value
-            else:
-                logger.debug(f"_conversation_state_to_booking_substate: пропускаем критическое поле {key} = None (не затираем существующее значение)")
+            # Обновляем критическое поле - если оно в booking_data, значит было явно обновлено
+            logger.debug(f"_conversation_state_to_booking_substate: обновляем критическое поле {key} = {value}")
+            updated_state[key] = value
         elif value is not None and value != "":
             # Для некритических полей: обновляем если значение не None и не пустое
             logger.debug(f"_conversation_state_to_booking_substate: обновляем некритическое поле {key} = {value}")
@@ -240,8 +236,11 @@ def create_booking_graph(checkpointer):
     """
     Создает и компилирует граф состояний для бронирования
     
+    ВАЖНО: Граф использует checkpointer для сохранения состояния в базе данных.
+    Состояние хранится в BookingGraphState (booking + conversation) в checkpointer.
+    
     Args:
-        checkpointer: Обязательный checkpointer для сохранения состояния в PostgreSQL
+        checkpointer: Checkpointer для сохранения состояния в PostgreSQL
         
     Returns:
         Скомпилированный граф
@@ -251,7 +250,8 @@ def create_booking_graph(checkpointer):
     """
     if checkpointer is None:
         raise ValueError("checkpointer обязателен для работы с PostgreSQL. Граф бронирования должен компилироваться с checkpointer.")
-    logger.info("Создание графа бронирования")
+    
+    logger.info("Создание графа бронирования с checkpointer")
     
     # Создаем граф
     workflow = StateGraph(BookingGraphState)
@@ -271,10 +271,10 @@ def create_booking_graph(checkpointer):
     workflow.add_conditional_edges("contact_collector", route_booking)  # Условный роутинг: если answer пустой - продолжаем, иначе END
     workflow.add_edge("finalizer", END)  # Только finalizer завершает граф
     
-    # Компилируем граф с checkpointer
+    # Компилируем граф с checkpointer - состояние хранится в базе данных
     compiled_graph = workflow.compile(checkpointer=checkpointer)
     
-    logger.info("Граф бронирования создан и скомпилирован")
+    logger.info("Граф бронирования создан и скомпилирован с checkpointer")
     
     return compiled_graph
 
