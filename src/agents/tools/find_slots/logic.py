@@ -366,11 +366,32 @@ async def find_slots_by_period(
                 
                 final_intervals = []
                 for interval in intervals:
-                    start_time_str = interval.split('-')[0].strip()
-                    start_minutes = _time_to_minutes(start_time_str)
-                    
-                    if start_bound <= start_minutes <= end_bound:
-                        final_intervals.append(interval)
+                    # Парсим интервал для проверки пересечения с периодом
+                    if '-' in interval:
+                        parts = interval.split('-')
+                        interval_start_str = parts[0].strip()
+                        interval_end_str = parts[1].strip() if len(parts) > 1 else interval_start_str
+                        interval_start_minutes = _time_to_minutes(interval_start_str)
+                        interval_end_minutes = _time_to_minutes(interval_end_str)
+                        
+                        # Проверяем пересечение интервала с периодом времени
+                        # Интервал пересекается с периодом, если:
+                        # - начало интервала попадает в период, ИЛИ
+                        # - конец интервала попадает в период, ИЛИ
+                        # - интервал полностью содержит период
+                        interval_intersects = (
+                            (start_bound <= interval_start_minutes < end_bound) or
+                            (start_bound < interval_end_minutes <= end_bound) or
+                            (interval_start_minutes <= start_bound and interval_end_minutes >= end_bound)
+                        )
+                        
+                        if interval_intersects:
+                            final_intervals.append(interval)
+                    else:
+                        # Отдельное время - проверяем как раньше
+                        time_minutes = _time_to_minutes(interval)
+                        if start_bound <= time_minutes <= end_bound:
+                            final_intervals.append(interval)
             else:
                 intervals = _merge_consecutive_slots(times)
                 final_intervals = intervals

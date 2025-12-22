@@ -163,6 +163,9 @@ def _verify_slot_time_availability(
         master_id = booking_state.get("master_id")
         master_name = booking_state.get("master_name")
         
+        # Логируем параметры проверки
+        logger.info(f"Проверка доступности времени {slot_time} для service_id={service_id}, master_id={master_id}, master_name={master_name}, date={date_str}")
+        
         # Проверяем доступность через FindSlots
         try:
             yclients_service = YclientsService()
@@ -181,6 +184,7 @@ def _verify_slot_time_availability(
             }
         
         # Вызываем find_slots_by_period для проверки конкретного времени
+        # Если указан master_id или master_name, проверка будет только для этого мастера
         result = asyncio.run(
             find_slots_by_period(
                 yclients_service=yclients_service,
@@ -207,8 +211,13 @@ def _verify_slot_time_availability(
             }
         
         # Проверяем, есть ли это время в результатах
-        results = result.get('results', [])
+        # Структура результата: {"masters": [{"master_id": ..., "master_name": ..., "results": [{"date": ..., "slots": [...]}]}]}
+        masters = result.get('masters', [])
         time_found = False
+        
+        # Если указан конкретный мастер, проверяем соответствие
+        if master_id or master_name:
+            logger.info(f"Проверка доступности для конкретного мастера: master_id={master_id}, master_name={master_name}")
         
         # Преобразуем время в минуты для проверки
         def time_to_minutes(time_str: str) -> int:
@@ -217,30 +226,54 @@ def _verify_slot_time_availability(
         
         target_minutes = time_to_minutes(time_str)
         
-        for day_result in results:
-            if day_result.get('date') == date_str:
-                slots = day_result.get('slots', [])
-                # Проверяем, есть ли нужное время в слотах
-                for slot in slots:
-                    # Слот может быть в формате "HH:MM" или "HH:MM-HH:MM"
-                    if '-' in slot:
-                        # Интервал: проверяем, попадает ли время в интервал
-                        parts = slot.split('-')
-                        start_time = parts[0].strip()
-                        end_time = parts[1].strip() if len(parts) > 1 else start_time
-                        start_minutes = time_to_minutes(start_time)
-                        end_minutes = time_to_minutes(end_time)
-                        # Время доступно, если оно попадает в интервал (включительно начало, исключительно конец)
-                        if start_minutes <= target_minutes < end_minutes:
-                            time_found = True
-                            break
-                    else:
-                        # Отдельное время: точное совпадение
-                        if slot == time_str:
-                            time_found = True
-                            break
-                if time_found:
-                    break
+        # Проверяем результаты для каждого мастера
+        for master_data in masters:
+            result_master_id = master_data.get('master_id')
+            result_master_name = master_data.get('master_name')
+            
+            # Если указан конкретный мастер, проверяем соответствие
+            if master_id:
+                if result_master_id != master_id:
+                    logger.debug(f"Пропускаем мастера {result_master_id} (ожидался {master_id})")
+                    continue
+            elif master_name:
+                # Сравниваем имена без учета регистра
+                if result_master_name and result_master_name.lower() != master_name.lower():
+                    logger.debug(f"Пропускаем мастера {result_master_name} (ожидался {master_name})")
+                    continue
+            
+            master_results = master_data.get('results', [])
+            logger.debug(f"Проверка слотов для мастера {result_master_name} (ID: {result_master_id}), найдено результатов: {len(master_results)}")
+            
+            for day_result in master_results:
+                if day_result.get('date') == date_str:
+                    slots = day_result.get('slots', [])
+                    logger.debug(f"Найдены слоты для даты {date_str}: {slots}")
+                    # Проверяем, есть ли нужное время в слотах
+                    for slot in slots:
+                        # Слот может быть в формате "HH:MM" или "HH:MM-HH:MM"
+                        if '-' in slot:
+                            # Интервал: проверяем, попадает ли время в интервал
+                            parts = slot.split('-')
+                            start_time = parts[0].strip()
+                            end_time = parts[1].strip() if len(parts) > 1 else start_time
+                            start_minutes = time_to_minutes(start_time)
+                            end_minutes = time_to_minutes(end_time)
+                            # Время доступно, если оно попадает в интервал (включительно начало, исключительно конец)
+                            if start_minutes <= target_minutes < end_minutes:
+                                logger.info(f"Время {time_str} найдено в интервале {slot} для мастера {result_master_name}")
+                                time_found = True
+                                break
+                        else:
+                            # Отдельное время: точное совпадение
+                            if slot == time_str:
+                                logger.info(f"Время {time_str} найдено как точное совпадение для мастера {result_master_name}")
+                                time_found = True
+                                break
+                    if time_found:
+                        break
+            if time_found:
+                break
         
         if time_found:
             # Время доступно - устанавливаем флаг и возвращаем пустой answer
