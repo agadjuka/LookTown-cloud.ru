@@ -156,3 +156,4 @@ def try_update_booking_state_from_reply(
     
     return updated_extracted_info
 
+
