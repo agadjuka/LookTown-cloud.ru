@@ -117,12 +117,24 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
         response = client.create_response(
             instructions=system_prompt,
             input_messages=input_messages,
-            temperature=0.7,
+            temperature=0.1,
             max_output_tokens=200
         )
         
         # Получаем ответ от LLM
-        reply = response.choices[0].message.content.strip()
+        message = response.choices[0].message
+        
+        # Проверяем, есть ли content в ответе
+        if message.content is None or not message.content.strip():
+            # Если content пустой, но есть tool_calls - это ошибка, так как инструменты не используются
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                logger.warning("Получен ответ с tool_calls вместо content в contact_collector (инструменты не используются)")
+            
+            # Если content пустой, используем дефолтное сообщение
+            logger.warning("Получен пустой ответ от LLM в contact_collector, используем дефолтное сообщение")
+            reply = "Хорошо, пожалуйста, напишите ваше имя и номер телефона."
+        else:
+            reply = message.content.strip()
         
         logger.info(f"Contact collector ответил: {reply[:100]}...")
         

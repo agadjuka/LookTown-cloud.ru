@@ -14,6 +14,7 @@ from ....services.logger_service import logger
 # Импортируем инструменты
 from ....agents.tools.get_categories.tool import GetCategories
 from ....agents.tools.find_service.tool import FindService
+from ....agents.tools.view_service.tool import ViewService
 
 
 def _build_system_prompt(
@@ -65,8 +66,9 @@ def _build_system_prompt(
 1.1 Если клиент просто выразил желание записаться или узнать услуги салона, вызови `GetCategories` и отправь полный список из инструмента.  
 1.2 Если клиент сказал на какую услугу хочет записаться используй `FindService`.
 1.3 Если Клиент хочет записаться к конкретному мастеру (называет имя и услугу) — используй `FindService` с указанием поля `master_name`. Если только имя — сначала уточни услугу.
-1.4 Узнать детали об услуге (в т.ч. кто из мастеров её делает - ViewServices)
-Если клиент выбрал конкретную услугу (в том числе если ты получил из tool список услуг, и явно подходит только одна), верни ТОЛЬКО JSON с ID выбранной услуги в формате: {{"service_id": 12345678}} (единственная ситуация когда ты можешь отправить ID услуги)
+1.4 Если клиент хочет узнать информацию об услуге (в т.ч. кто из мастеров её делает) — используй `ViewService`. НИКОГДА НЕ ПРИДУМЫВАЙ ИНФОРМАЦИЮ ОБ УСЛУГЕ И НЕ БЕРИ ЕЁ ИЗ СВОИХ ЗНАНИЙ, ТОЛЬКО ИЗ ИНСТРУМЕНТОВ.
+
+2 Если клиент выбрал конкретную услугу (в том числе если ты получил из tool список услуг, и явно подходит только одна) и не задавал вопросы о ней, верни ТОЛЬКО JSON с ID выбранной услуги в формате: {{"service_id": 12345678}} (единственная ситуация когда ты можешь отправить ID услуги)
 
 ВАЖНО:
 - Не придумывай услуги и цены. Бери только из инструментов. 
@@ -84,7 +86,7 @@ def service_manager_node(state: ConversationState) -> ConversationState:
     Узел менеджера услуг для выбора услуги в процессе бронирования
     
     Этот узел запускается, если service_id в состоянии бронирования все еще None.
-    Использует инструменты GetCategories, GetServices, FindService
+    Использует инструменты GetCategories, FindService, ViewService
     для помощи клиенту в выборе услуги.
     
     Args:
@@ -132,6 +134,7 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         # Регистрируем необходимые инструменты
         tools_registry.register_tool(GetCategories)
         tools_registry.register_tool(FindService)
+        tools_registry.register_tool(ViewService)
         
         # Создаем orchestrator
         config = ResponsesAPIConfig()
