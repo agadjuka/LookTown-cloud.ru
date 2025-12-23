@@ -45,7 +45,8 @@ class BaseAgent:
             instructions=instruction,
             tools_registry=tools_registry,
             config=config,
-            )
+            agent_name=self.agent_name,
+        )
         
         # Инициализируем список для отслеживания tool_calls
         self._last_tool_calls = []

@@ -25,6 +25,7 @@ class ResponsesOrchestrator:
         tools_registry: Optional[ResponsesToolsRegistry] = None,
         client: Optional[ResponsesAPIClient] = None,
         config: Optional[ResponsesAPIConfig] = None,
+        agent_name: Optional[str] = None,
     ):
         """
         Инициализация orchestrator
@@ -33,6 +34,7 @@ class ResponsesOrchestrator:
         self.tools_registry = tools_registry or ResponsesToolsRegistry()
         self.config = config or ResponsesAPIConfig()
         self.client = client or ResponsesAPIClient(self.config)
+        self.agent_name = agent_name
     
     def run_turn(
         self,
@@ -148,6 +150,7 @@ class ResponsesOrchestrator:
                     instructions=self.instructions,
                     input_messages=messages_to_send,  # Передаем обрезанные сообщения
                     tools=tools_schemas if tools_schemas else None,
+                    agent_name=self.agent_name,
                 )
             except Exception as e:
                 logger.error(f"Ошибка при запросе к API на итерации {iteration}: {e}", exc_info=True)

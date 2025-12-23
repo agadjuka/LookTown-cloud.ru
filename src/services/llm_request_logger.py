@@ -110,6 +110,32 @@ class LLMRequestLogger:
             except Exception as e:
                 print(f"Ошибка записи в лог: {e}")
     
+    def log_raw_request_to_llm(
+        self,
+        agent_name: str,
+        raw_request_data: Dict[str, Any]
+    ):
+        """
+        Логировать полностью сырой запрос к LLM - то, что реально отправляется через API
+        Без форматирования, полностью как JSON строка
+        
+        Args:
+            agent_name: Имя агента
+            raw_request_data: Полностью сырой словарь запроса, который отправляется в API
+        """
+        timestamp = datetime.now().isoformat()
+        log_entry = f"\n{'='*80}\n"
+        log_entry += f"[{timestamp}] REQUEST TO LLM (RAW DATA SENT TO API)\n"
+        log_entry += f"{'='*80}\n"
+        log_entry += f"Agent: {agent_name}\n\n"
+        
+        # Записываем полностью сырой JSON без форматирования (как одна строка)
+        raw_json = json.dumps(raw_request_data, ensure_ascii=False, separators=(',', ':'))
+        log_entry += f"--- RAW REQUEST JSON (NO FORMATTING) ---\n"
+        log_entry += f"{raw_json}\n"
+        
+        self._write_raw(log_entry)
+    
     def log_request_to_llm(
         self,
         agent_name: str,
@@ -196,6 +222,60 @@ class LLMRequestLogger:
         # Полный JSON запроса
         log_entry += f"--- FULL REQUEST JSON (AS SENT TO API) ---\n"
         log_entry += json.dumps(request_data, ensure_ascii=False, indent=2) + "\n"
+        
+        self._write_raw(log_entry)
+    
+    def log_raw_response_from_llm(
+        self,
+        agent_name: str,
+        raw_response_data: Any
+    ):
+        """
+        Логировать полностью сырой ответ от LLM - то, что реально получено от API
+        Без форматирования, полностью как JSON строка
+        
+        Args:
+            agent_name: Имя агента
+            raw_response_data: Полностью сырой объект ответа от API
+        """
+        timestamp = datetime.now().isoformat()
+        log_entry = f"\n{'='*80}\n"
+        log_entry += f"[{timestamp}] RESPONSE FROM LLM (RAW DATA RECEIVED FROM API)\n"
+        log_entry += f"{'='*80}\n"
+        log_entry += f"Agent: {agent_name}\n\n"
+        
+        # Пытаемся извлечь сырой JSON из ответа
+        raw_json_str = None
+        
+        # Проверяем различные способы получения сырого JSON
+        if hasattr(raw_response_data, '_raw_json'):
+            # Если есть атрибут _raw_json
+            raw_json_str = json.dumps(raw_response_data._raw_json, ensure_ascii=False, separators=(',', ':'))
+        elif hasattr(raw_response_data, 'model_dump'):
+            # Если это Pydantic модель
+            raw_json_str = json.dumps(raw_response_data.model_dump(), ensure_ascii=False, separators=(',', ':'))
+        elif hasattr(raw_response_data, 'dict'):
+            # Если есть метод dict (Pydantic v1)
+            raw_json_str = json.dumps(raw_response_data.dict(), ensure_ascii=False, separators=(',', ':'))
+        elif hasattr(raw_response_data, '__dict__'):
+            # Если есть __dict__
+            raw_json_str = json.dumps(self._to_dict_recursive(raw_response_data), ensure_ascii=False, separators=(',', ':'))
+        elif isinstance(raw_response_data, dict):
+            # Если это уже словарь
+            raw_json_str = json.dumps(raw_response_data, ensure_ascii=False, separators=(',', ':'))
+        else:
+            # Пытаемся преобразовать через model_dump_json если доступно
+            try:
+                if hasattr(raw_response_data, 'model_dump_json'):
+                    raw_json_str = raw_response_data.model_dump_json()
+                else:
+                    # Последняя попытка - через json.dumps с default
+                    raw_json_str = json.dumps(raw_response_data, ensure_ascii=False, separators=(',', ':'), default=str)
+            except Exception as e:
+                raw_json_str = f"Error serializing response: {str(e)}\nObject type: {type(raw_response_data)}\nObject repr: {repr(raw_response_data)}"
+        
+        log_entry += f"--- RAW RESPONSE JSON (NO FORMATTING) ---\n"
+        log_entry += f"{raw_json_str}\n"
         
         self._write_raw(log_entry)
     
@@ -420,6 +500,13 @@ class LLMRequestLogger:
     
     def _extract_message_data(self, msg: Any) -> Dict[str, Any]:
         """Извлечь данные сообщения, как они реально отправляются в API"""
+        # ВАЖНО: если это уже словарь (как в LangGraph state / history) —
+        # возвращаем его «как есть», без попытки что‑то выдернуть по атрибутам.
+        # Это как раз тот формат, который реально видит агент.
+        if isinstance(msg, dict):
+            # Рекурсивно приводим к сериализуемому виду, но не меняем структуру
+            return self._to_dict_recursive(msg)  # type: ignore[return-value]
+        
         message_data = {}
         
         # Роль
