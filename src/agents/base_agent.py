@@ -7,7 +7,6 @@ from ..graph.utils import dicts_to_messages
 from ..services.responses_api.orchestrator import ResponsesOrchestrator
 from ..services.responses_api.tools_registry import ResponsesToolsRegistry
 from ..services.logger_service import logger
-from ..services.llm_request_logger import llm_request_logger
 from ..services.tool_history_service import get_tool_history_service
 
 
@@ -79,27 +78,6 @@ class BaseAgent:
             self._last_tool_calls = []
             self._call_manager_result = None
             
-            # Логируем сообщение пользователя
-            llm_request_logger.start_new_request()
-            timestamp = datetime.now().isoformat()
-            log_entry = f"\n{'='*80}\n"
-            log_entry += f"[{timestamp}] USER MESSAGE (EXACT DATA SENT TO API)\n"
-            log_entry += f"{'='*80}\n"
-            log_entry += f"Agent: {self.agent_name}\n"
-            log_entry += f"Message:\n{message}\n"
-            log_entry += f"History: {len(history) if history else 0} messages\n"
-            llm_request_logger._write_raw(log_entry)
-            
-            # Логируем запрос к LLM
-            llm_request_logger.log_request_to_llm(
-                agent_name=self.agent_name,
-                thread_id=None,
-                assistant_id=None,
-                instruction=self.instruction,
-                tools=list(self.tools.values()),
-                messages=history  # Передаём историю для логирования
-            )
-            
             # Выполняем запрос через orchestrator
             result = self.orchestrator.run_turn(message, history, chat_id=chat_id)
             
@@ -126,15 +104,6 @@ class BaseAgent:
                 }
             
             reply = result.get("reply", "")
-            raw_response = result.get("raw_response")
-                    
-            # Логируем ответ от LLM
-            llm_request_logger.log_response_from_llm(
-                agent_name=self.agent_name,
-                response_text=reply,
-                tool_calls=self._last_tool_calls if self._last_tool_calls else None,
-                raw_response=raw_response
-            )
             
             return {
                 "messages": new_messages,
@@ -145,16 +114,6 @@ class BaseAgent:
         except Exception as e:
             import traceback
             error_traceback = traceback.format_exc()
-            
-            # Логируем ошибку в LLM лог
-            try:
-                llm_request_logger.log_error(
-                    agent_name=self.agent_name,
-                    error=e,
-                    context=f"Message: {message[:200]}"
-                )
-            except Exception as log_error:
-                logger.debug(f"Ошибка при логировании ошибки: {log_error}")
             
             logger.error(f"Ошибка в агенте {self.agent_name}: {e}")
             logger.error(f"Тип ошибки: {type(e).__name__}")

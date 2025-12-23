@@ -282,20 +282,26 @@ class ResponsesAPIClient:
             
             # Retry механизм для временных ошибок
             last_exception = None
+            request_id = None
             for attempt in range(self.max_retries):
                 # Логируем запрос при каждой попытке (параметры могут измениться)
-                llm_request_logger.log_raw_request_to_llm(
-                    agent_name=agent_name or "Unknown",
-                    raw_request_data=params
-                )
+                if attempt == 0:
+                    # Сохраняем запрос только при первой попытке
+                    request_id = llm_request_logger.save_request(
+                        request_data=params,
+                        agent_name=agent_name
+                    )
+                    if request_id is None:
+                        request_id = 0  # Если логирование отключено, используем 0
                 
                 try:
                     response = self.client.chat.completions.create(**params)
                     
-                    # Логируем полностью сырой ответ после получения
-                    llm_request_logger.log_raw_response_from_llm(
-                        agent_name=agent_name or "Unknown",
-                        raw_response_data=response
+                    # Логируем ответ после получения
+                    llm_request_logger.save_response(
+                        response_data=response,
+                        agent_name=agent_name,
+                        request_id=request_id
                     )
                     
                     return response
@@ -321,17 +327,18 @@ class ResponsesAPIClient:
                             params_without_tools.pop("tools", None)
                             
                             # Логируем запрос без tools
-                            llm_request_logger.log_raw_request_to_llm(
-                                agent_name=agent_name or "Unknown",
-                                raw_request_data=params_without_tools
+                            request_id_no_tools = llm_request_logger.save_request(
+                                request_data=params_without_tools,
+                                agent_name=agent_name
                             )
                             
                             response = self.client.chat.completions.create(**params_without_tools)
                             
                             # Логируем ответ
-                            llm_request_logger.log_raw_response_from_llm(
-                                agent_name=agent_name or "Unknown",
-                                raw_response_data=response
+                            llm_request_logger.save_response(
+                                response_data=response,
+                                agent_name=agent_name,
+                                request_id=request_id_no_tools
                             )
                             
                             logger.warning("Успешно выполнен запрос без tools после ошибки токенов")
@@ -354,12 +361,6 @@ class ResponsesAPIClient:
                         logger.warning(f"Неизвестная ошибка (попытка {attempt + 1}/{self.max_retries}): {e}. Повтор через {delay}с")
                         time.sleep(delay)
                         continue
-                    # Логируем ошибку перед пробросом
-                    llm_request_logger.log_error(
-                        agent_name=agent_name or "Unknown",
-                        error=e,
-                        context=f"Request failed after {attempt + 1} attempts"
-                    )
                     raise
             
             # Если все попытки исчерпаны
@@ -373,10 +374,4 @@ class ResponsesAPIClient:
             if 'messages' in locals() and messages:
                 logger.error(f"First message: role={messages[0].get('role')}, has_content={bool(messages[0].get('content'))}, has_tool_calls={bool(messages[0].get('tool_calls'))}")
             
-            # Логируем ошибку в логгер запросов
-            llm_request_logger.log_error(
-                agent_name=agent_name or "Unknown",
-                error=e,
-                context="Error in create_response before API call"
-            )
             raise

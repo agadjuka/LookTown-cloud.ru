@@ -134,6 +134,10 @@ class MainGraph:
         # Фильтруем историю для StageDetector: удаляем tool сообщения и ограничиваем до 10 последних
         if history:
             history = filter_history_for_stage_detector(history, max_messages=10)
+            # Удаляем последнее user сообщение, так как текущее message передается отдельно
+            # Это предотвращает дублирование в orchestrator
+            if history and history[-1].get("role") == "user":
+                history = history[:-1]
         
         chat_id = state.get("chat_id")
         
