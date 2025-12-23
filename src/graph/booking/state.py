@@ -15,3 +15,4 @@ class BookingSubState(TypedDict, total=False):
     client_name: Optional[str]              # Имя клиента
     client_phone: Optional[str]            # Телефон клиента
     is_finalized: Optional[bool]           # Флаг завершения бронирования
+    service_details_needed: Optional[bool] # Флаг необходимости ответа на вопрос об услуге
