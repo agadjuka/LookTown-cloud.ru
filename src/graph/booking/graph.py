@@ -157,22 +157,19 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
     """
     Функция роутинга для выбора следующего узла в графе бронирования
     
-    Intent-Driven Routing: сначала проверяем намерение пользователя, затем данные.
+    Data-Driven Routing: роутинг основан только на наличии данных в состоянии.
     Если Analyzer сбросит service_id в None (при смене темы), роутер автоматически
     вернет "service_manager", игнорируя предыдущий этап.
     
     Логика (строгий порядок проверок):
-    1. Если answer не пустой -> END (ждем ответа клиента)
-    2. Если is_finalized -> END (процесс завершен)
-    3. Проверка user_intent (приоритетная):
-       - Если 'question' -> service_manager (для ответа на вопрос)
-       - Если 'change_input' -> service_manager (для перезапуска выбора)
-    4. Data-Driven Routing (если intent='booking_action' или None):
-       - Если service_id is None -> service_manager
-       - Если slot_time is None -> slot_manager
-       - Если slot_time есть, но slot_time_verified is False/None -> slot_manager
-       - Если нет контактов -> contact_collector
-       - Иначе -> finalizer
+    1. Если is_finalized -> END (процесс завершен)
+    2. Проверяем answer в conversation - если пустой, продолжаем процесс автоматически
+    3. Если service_id is None -> service_manager (даже если есть service_name, ID важнее)
+    4. Если slot_time is None -> slot_manager (поиск слотов)
+    5. Если slot_time есть, но slot_time_verified is False/None -> slot_manager (проверка доступности)
+    6. Если нет контактов (client_name или client_phone) -> contact_collector
+    7. Иначе (все данные есть) -> finalizer
+    8. Если answer не пустой -> END (ждем ответа клиента)
     
     Args:
         state: Состояние графа (словарь с ключом 'booking' и 'conversation')
@@ -198,17 +195,7 @@ def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_man
         logger.info("Бронирование финализировано, завершаем граф")
         return END
     
-    # 2. Проверка user_intent (приоритетная проверка)
-    user_intent = booking_state.get("user_intent")
-    if user_intent == "question":
-        logger.info("user_intent='question', маршрутизируем в service_manager для ответа на вопрос")
-        return "service_manager"
-    elif user_intent == "change_input":
-        logger.info("user_intent='change_input', маршрутизируем в service_manager для перезапуска выбора")
-        return "service_manager"
-    
-    # 3. Data-Driven Routing (если intent='booking_action' или None)
-    # Если нет ID услуги — идем выбирать услугу (даже если есть название, ID важнее)
+    # 2. Если нет ID услуги — идем выбирать услугу (даже если есть название, ID важнее)
     # Используем явную проверку на None
     if service_id is None:
         logger.info(f"service_id отсутствует (значение: {service_id}), маршрутизируем в service_manager")

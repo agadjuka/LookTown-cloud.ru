@@ -81,24 +81,6 @@ def _build_system_prompt(
     return prompt
 
 
-def _clear_user_intent(extracted_info: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Сбрасывает user_intent в booking state для предотвращения циклов
-    
-    Args:
-        extracted_info: Текущий extracted_info
-        
-    Returns:
-        Обновленный extracted_info с очищенным user_intent
-    """
-    updated_extracted_info = extracted_info.copy()
-    booking_state = updated_extracted_info.get("booking", {}).copy()
-    if "user_intent" in booking_state:
-        booking_state.pop("user_intent")
-        updated_extracted_info["booking"] = booking_state
-    return updated_extracted_info
-
-
 def service_manager_node(state: ConversationState) -> ConversationState:
     """
     Узел менеджера услуг для выбора услуги в процессе бронирования
@@ -119,13 +101,10 @@ def service_manager_node(state: ConversationState) -> ConversationState:
     extracted_info = state.get("extracted_info") or {}
     booking_state: Dict[str, Any] = extracted_info.get("booking", {})
     
-    # Проверяем user_intent - если это вопрос, обрабатываем его даже если service_id уже есть
-    user_intent = booking_state.get("user_intent")
+    # Проверяем, есть ли уже service_id
     service_id = booking_state.get("service_id")
-    
-    # Если услуга уже выбрана И это не вопрос - пропускаем
-    if service_id is not None and user_intent != "question":
-        logger.info(f"Услуга уже выбрана (service_id={service_id}) и это не вопрос, пропускаем service_manager")
+    if service_id is not None:
+        logger.info(f"Услуга уже выбрана (service_id={service_id}), пропускаем service_manager")
         return {}
     
     # Получаем данные для контекста
@@ -180,9 +159,6 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         new_messages_dicts = result.get("new_messages", [])
         new_messages = dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
         
-        # Сбрасываем user_intent после обработки, чтобы избежать циклов
-        cleared_extracted_info = _clear_user_intent(extracted_info)
-        
         # Проверяем, был ли вызван CallManager
         if result.get("call_manager"):
             logger.info("CallManager был вызван в service_manager_node")
@@ -190,7 +166,6 @@ def service_manager_node(state: ConversationState) -> ConversationState:
                 "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
                 "answer": result.get("reply", ""),
                 "manager_alert": result.get("manager_alert"),
-                "extracted_info": cleared_extracted_info,
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
                 "tool_results": tool_calls if tool_calls else []
             }
@@ -199,18 +174,16 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         updated_extracted_info = try_update_booking_state_from_reply(
             reply=reply,
             current_booking_state=booking_state,
-            extracted_info=cleared_extracted_info
+            extracted_info=extracted_info
         )
         
         # Если JSON найден и состояние обновлено - не отправляем сообщение клиенту
         if updated_extracted_info:
             logger.info("JSON найден в ответе service_manager, состояние обновлено, пропускаем отправку сообщения клиенту")
-            # Сбрасываем user_intent в обновленном состоянии
-            final_extracted_info = _clear_user_intent(updated_extracted_info)
             return {
                 "messages": new_messages,
                 "answer": "",  # Пустой answer - процесс продолжается автоматически
-                "extracted_info": final_extracted_info,
+                "extracted_info": updated_extracted_info,
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
                 "tool_results": tool_calls if tool_calls else []
             }
@@ -224,7 +197,6 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         return {
             "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
             "answer": reply,
-            "extracted_info": cleared_extracted_info,
             "used_tools": used_tools,
             "tool_results": tool_calls if tool_calls else []
         }

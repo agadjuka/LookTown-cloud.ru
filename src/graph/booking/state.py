@@ -1,7 +1,7 @@
 """
 Состояние для подграфа бронирования (Booking Subgraph)
 """
-from typing import TypedDict, Optional, Literal
+from typing import TypedDict, Optional
 
 
 class BookingSubState(TypedDict, total=False):
@@ -15,4 +15,3 @@ class BookingSubState(TypedDict, total=False):
     client_name: Optional[str]              # Имя клиента
     client_phone: Optional[str]            # Телефон клиента
     is_finalized: Optional[bool]           # Флаг завершения бронирования
-    user_intent: Optional[Literal["booking_action", "question", "change_input"]]  # Намерение пользователя
