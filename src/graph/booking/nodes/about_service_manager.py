@@ -25,11 +25,7 @@ def _build_system_prompt(service_name: Optional[str]) -> str:
         
     Returns:
         Системный промпт для LLM
-    """
-    context_section = ""
-    if service_name:
-        context_section = f"\nКОНТЕКСТ: Клиент интересуется услугой {service_name}.\n"
-    
+    """    
     prompt = f"""Ты эксперт по услугам салона красоты LookTown. 
 {context_section}
 Твой стиль общения — дружелюбный, профессиональный, от женского лица, на "вы". 

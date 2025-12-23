@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from yandex_cloud_ml_sdk._threads.thread import Thread
 
 from ..common.yclients_service import YclientsService
-from .logic import find_slots_by_period
+from .logic import find_slots_by_period, _is_generic_master_term
 
 try:
     from ....services.logger_service import logger
@@ -66,12 +66,17 @@ class FindSlots(BaseModel):
             except ValueError as e:
                 return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
             
+            # Игнорируем master_name, если это общий термин (мастер, топ-мастер, юниор)
+            master_name_to_use = None
+            if self.master_name and not _is_generic_master_term(self.master_name):
+                master_name_to_use = self.master_name
+            
             result = asyncio.run(
                 find_slots_by_period(
                     yclients_service=yclients_service,
                     service_id=self.service_id,
                     time_period=self.time_period or "",
-                    master_name=self.master_name,
+                    master_name=master_name_to_use,
                     master_id=self.master_id,
                     date=self.date,
                     date_range=self.date_range
@@ -92,8 +97,8 @@ class FindSlots(BaseModel):
                 else:
                     period_text = ""
                 
-                if self.master_name or self.master_id:
-                    master_display = self.master_name or f"мастера {self.master_id}"
+                if master_name_to_use or self.master_id:
+                    master_display = master_name_to_use or f"мастера {self.master_id}"
                     if self.date:
                         return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
                     elif self.date_range:

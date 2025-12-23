@@ -2,10 +2,51 @@
 Логика для поиска доступных слотов по периодам времени
 """
 import asyncio
+import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from ..common.yclients_service import YclientsService, Master
 from ..common.book_times_logic import _find_master_by_name, _merge_consecutive_slots
+
+
+def _is_generic_master_term(master_name: Optional[str]) -> bool:
+    """
+    Проверяет, является ли master_name общим термином (мастер, топ-мастер, юниор),
+    который должен быть проигнорирован.
+    
+    Args:
+        master_name: Имя мастера для проверки
+        
+    Returns:
+        True, если это общий термин, который нужно игнорировать
+    """
+    if not master_name:
+        return False
+    
+    # Нормализуем строку: убираем пробелы, приводим к нижнему регистру
+    normalized = re.sub(r'\s+', '', master_name.lower())
+    
+    # Список общих терминов для игнорирования
+    generic_terms = [
+        'мастер',
+        'топмастер',
+        'топ-мастер',
+        'топ мастер',
+        'юниор',
+        'junior',
+        'master',
+        'topmaster',
+        'top-master',
+        'top master'
+    ]
+    
+    # Проверяем точное совпадение после нормализации
+    for term in generic_terms:
+        term_normalized = re.sub(r'\s+', '', term.lower())
+        if normalized == term_normalized:
+            return True
+    
+    return False
 
 
 def _parse_time_string(time_str: str) -> int:
