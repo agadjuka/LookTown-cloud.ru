@@ -82,3 +82,29 @@ def messages_to_history(messages: List[BaseMessage | Dict[str, Any]]) -> List[Di
     return history
 
 
+def filter_history_for_stage_detector(history: List[Dict[str, Any]], max_messages: int = 10) -> List[Dict[str, Any]]:
+    """
+    Фильтрует историю для StageDetector:
+    - Удаляет сообщения с role: "tool"
+    - Ограничивает до последних max_messages сообщений
+    
+    Args:
+        history: История сообщений в формате словарей
+        max_messages: Максимальное количество сообщений (по умолчанию 10)
+        
+    Returns:
+        Отфильтрованная и ограниченная история
+    """
+    if not history:
+        return []
+    
+    # Фильтруем сообщения с role: "tool"
+    filtered_history = [msg for msg in history if msg.get("role") != "tool"]
+    
+    # Ограничиваем до последних max_messages сообщений
+    if len(filtered_history) > max_messages:
+        filtered_history = filtered_history[-max_messages:]
+    
+    return filtered_history
+
+

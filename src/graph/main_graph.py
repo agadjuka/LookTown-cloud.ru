@@ -4,7 +4,7 @@
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from .conversation_state import ConversationState
-from .utils import messages_to_history
+from .utils import messages_to_history, filter_history_for_stage_detector
 from ..agents.stage_detector_agent import StageDetectorAgent
 from ..agents.booking_agent import BookingAgent
 from ..agents.cancel_booking_agent import CancelBookingAgent
@@ -130,6 +130,11 @@ class MainGraph:
         # Преобразуем messages в history для обратной совместимости с агентами
         messages = state.get("messages", [])
         history = messages_to_history(messages) if messages else None
+        
+        # Фильтруем историю для StageDetector: удаляем tool сообщения и ограничиваем до 10 последних
+        if history:
+            history = filter_history_for_stage_detector(history, max_messages=10)
+        
         chat_id = state.get("chat_id")
         
         # Используем новый метод run() для получения всех сообщений
