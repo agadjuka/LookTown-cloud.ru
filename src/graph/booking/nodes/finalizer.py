@@ -12,6 +12,7 @@ from ....services.logger_service import logger
 
 # Импортируем инструмент
 from ....agents.tools.create_booking.tool import CreateBooking
+from ....agents.tools.call_manager import CallManager
 
 
 def finalizer_node(state: ConversationState) -> ConversationState:
@@ -103,6 +104,8 @@ def finalizer_node(state: ConversationState) -> ConversationState:
 - После успешного вызова инструмента, подтверди запись клиенту:
   "{confirmation_template}"
   (Склоняй имя мастера, если возможно).
+
+Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
 """
     
     try:
@@ -111,6 +114,7 @@ def finalizer_node(state: ConversationState) -> ConversationState:
         
         # Регистрируем инструмент CreateBooking
         tools_registry.register_tool(CreateBooking)
+        tools_registry.register_tool(CallManager)
         
         # Создаем orchestrator
         config = ResponsesAPIConfig()

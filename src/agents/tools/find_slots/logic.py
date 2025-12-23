@@ -438,3 +438,216 @@ async def find_slots_by_period(
     
     return result
 
+
+async def find_alternative_masters_slots(
+    yclients_service: YclientsService,
+    service_id: int,
+    excluded_master_id: Optional[int] = None,
+    excluded_master_name: Optional[str] = None,
+    time_period: str = "",
+    date: Optional[str] = None,
+    date_range: Optional[str] = None
+) -> Dict[str, any]:
+    """
+    Находит доступные слоты для всех мастеров услуги, кроме указанного.
+    Используется когда у выбранного мастера нет свободных слотов.
+    
+    Args:
+        yclients_service: Экземпляр сервиса Yclients
+        service_id: ID услуги
+        excluded_master_id: ID мастера, которого нужно исключить из поиска
+        excluded_master_name: Имя мастера, которого нужно исключить из поиска
+        time_period: Период времени (опционально)
+        date: Конкретная дата в формате "YYYY-MM-DD" (опционально)
+        date_range: Интервал дат в формате "YYYY-MM-DD:YYYY-MM-DD" (опционально)
+        
+    Returns:
+        Dict с результатами поиска:
+        - service_title: Название услуги
+        - masters: Список мастеров с доступными слотами
+        - all_masters_checked: Список всех мастеров услуги
+    """
+    filter_by_time = bool(time_period and time_period.strip())
+    
+    if filter_by_time:
+        try:
+            _get_time_period_bounds(time_period)
+        except Exception as e:
+            return {
+                "error": f"Неверный формат периода времени: {time_period}"
+            }
+    
+    try:
+        service_details = await yclients_service.get_service_details(service_id)
+    except Exception as e:
+        return {
+            "error": f"Ошибка при получении информации об услуге: {str(e)}"
+        }
+    
+    service_name = service_details.name or service_details.title
+    if service_name == "Лист ожидания":
+        return {
+            "service_title": service_name,
+            "masters": [],
+            "all_masters_checked": []
+        }
+    
+    service_title = service_details.get_title()
+    
+    all_masters = service_details.staff
+    valid_masters = [
+        master for master in all_masters 
+        if master.name != "Лист ожидания"
+    ]
+    
+    # Исключаем выбранного мастера
+    if excluded_master_id:
+        valid_masters = [m for m in valid_masters if m.id != excluded_master_id]
+    elif excluded_master_name:
+        excluded_master = _find_master_by_name(valid_masters, excluded_master_name)
+        if excluded_master:
+            valid_masters = [m for m in valid_masters if m.id != excluded_master.id]
+    
+    if not valid_masters:
+        return {
+            "service_title": service_title,
+            "masters": [],
+            "all_masters_checked": [{"id": m.id, "name": m.name} for m in all_masters if m.name != "Лист ожидания"]
+        }
+    
+    master_ids = [master.id for master in valid_masters]
+    
+    # Определяем даты для проверки
+    if date:
+        try:
+            datetime.strptime(date, "%Y-%m-%d")
+            dates_to_check = [date]
+        except ValueError as e:
+            return {
+                "error": f"Неверный формат даты: {date}"
+            }
+    elif date_range:
+        try:
+            start_date, end_date = _parse_date_range(date_range)
+            dates_to_check = _generate_date_list(start_date, end_date)
+        except ValueError as e:
+            return {
+                "error": str(e)
+            }
+    else:
+        today = datetime.now().date()
+        dates_to_check = []
+        max_checks = 10
+        
+        for i in range(max_checks):
+            check_date = today + timedelta(days=i)
+            dates_to_check.append(check_date.strftime("%Y-%m-%d"))
+    
+    # Параллельно запрашиваем слоты для всех мастеров
+    tasks = []
+    for check_date in dates_to_check:
+        for master_id in master_ids:
+            tasks.append(
+                yclients_service.get_book_times(
+                    master_id=master_id,
+                    date=check_date,
+                    service_id=service_id
+                )
+            )
+    
+    responses = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Храним слоты по мастерам: master_slots[master_id][date] = set()
+    master_slots = {}
+    for master_id in master_ids:
+        master_slots[master_id] = {}
+        for check_date in dates_to_check:
+            master_slots[master_id][check_date] = set()
+    
+    task_index = 0
+    for check_date in dates_to_check:
+        for master_id in master_ids:
+            response = responses[task_index]
+            task_index += 1
+            
+            if isinstance(response, Exception):
+                continue
+            
+            for slot in response.data:
+                master_slots[master_id][check_date].add(slot.time)
+    
+    # Создаем словарь для имен мастеров
+    master_names_dict = {}
+    for master in valid_masters:
+        master_names_dict[master.id] = master.name
+    
+    target_days = 3 if not date and not date_range else len(dates_to_check)
+    
+    if filter_by_time:
+        start_bound, end_bound = _get_time_period_bounds(time_period)
+    
+    # Обрабатываем каждого мастера отдельно
+    masters_results = []
+    for master_id in master_ids:
+        master_name = master_names_dict.get(master_id, f"Мастер {master_id}")
+        master_results = []
+        days_found = 0
+        
+        for check_date in dates_to_check:
+            if not date and not date_range and days_found >= target_days:
+                break
+            
+            times = sorted(list(master_slots[master_id][check_date]), key=_time_to_minutes)
+            
+            if not times:
+                continue
+            
+            if filter_by_time:
+                filtered_times = _filter_times_by_period(times, time_period)
+                
+                if not filtered_times:
+                    continue
+                
+                intervals = _merge_consecutive_slots(filtered_times)
+                
+                final_intervals = []
+                for interval in intervals:
+                    start_time_str = interval.split('-')[0].strip()
+                    start_minutes = _time_to_minutes(start_time_str)
+                    
+                    if start_bound <= start_minutes <= end_bound:
+                        final_intervals.append(interval)
+            else:
+                intervals = _merge_consecutive_slots(times)
+                final_intervals = intervals
+            
+            if final_intervals:
+                master_results.append({
+                    "date": check_date,
+                    "slots": final_intervals
+                })
+                days_found += 1
+        
+        if master_results:
+            masters_results.append({
+                "master_id": master_id,
+                "master_name": master_name,
+                "results": master_results
+            })
+    
+    # Формируем список всех мастеров услуги
+    all_masters_list = [
+        {"id": m.id, "name": m.name} 
+        for m in all_masters 
+        if m.name != "Лист ожидания"
+    ]
+    
+    result = {
+        "service_title": service_title,
+        "time_period": time_period if filter_by_time else "",
+        "masters": masters_results,
+        "all_masters_checked": all_masters_list
+    }
+    
+    return result
+

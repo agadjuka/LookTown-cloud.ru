@@ -3,12 +3,16 @@
 """
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history
+from ...utils import messages_to_history, dicts_to_messages
 from ..state import BookingSubState
 from ..booking_state_updater import try_update_booking_state_from_reply
-from ....services.responses_api.client import ResponsesAPIClient
+from ....services.responses_api.orchestrator import ResponsesOrchestrator
+from ....services.responses_api.tools_registry import ResponsesToolsRegistry
 from ....services.responses_api.config import ResponsesAPIConfig
 from ....services.logger_service import logger
+
+# Импортируем инструмент
+from ....agents.tools.call_manager import CallManager
 
 
 def contact_collector_node(state: ConversationState) -> ConversationState:
@@ -75,65 +79,54 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
 ИНСТРУКЦИЯ:
 Тебе нужно получить имя и номер телефона клиента.
 
-ТВОЯ ФОРМУЛИРОВКА (Используй этот шаблон):
-"Хорошо, пожалуйста, напишите ваше имя и номер телефона."
+Примерная формулировка: Хорошо, пожалуйста, напишите ваше имя и номер телефона. (можешь менять в зависимости от ситуации)
+
+Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
 """
     
     try:
-        # Подготавливаем историю для контекста
-        # ВАЖНО: Передаем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста
-        input_messages = []
-        if history:
-            # Берем последние 15 сообщений для контекста (увеличено для лучшего контекста)
-            recent_history = history[-15:] if len(history) > 15 else history
-            for msg in recent_history:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                
-                # ВАЖНО: НЕ фильтруем по ролям - передаем ВСЕ типы сообщений
-                # Пропускаем только полностью пустые сообщения (без content и без tool_calls)
-                # Но для tool сообщений content может быть пустым, но они все равно важны
-                if not content and role != "tool":
-                    continue
-                
-                # Добавляем ВСЕ сообщения: user, assistant, tool, system
-                msg_dict = {
-                    "role": role,
-                    "content": content
-                }
-                # КРИТИЧНО: Для tool сообщений обязательно добавляем tool_call_id
-                if role == "tool" and msg.get("tool_call_id"):
-                    msg_dict["tool_call_id"] = msg.get("tool_call_id")
-                input_messages.append(msg_dict)
+        # Получаем chat_id
+        chat_id = state.get("chat_id")
         
-        # Добавляем последнее сообщение пользователя
-        input_messages.append({
-            "role": "user",
-            "content": user_message
-        })
+        # Создаем регистрацию инструментов
+        tools_registry = ResponsesToolsRegistry()
         
-        # Создаем клиент и делаем запрос (без инструментов)
+        # Регистрируем инструмент CallManager
+        tools_registry.register_tool(CallManager)
+        
+        # Создаем orchestrator
         config = ResponsesAPIConfig()
-        client = ResponsesAPIClient(config)
-        response = client.create_response(
+        orchestrator = ResponsesOrchestrator(
             instructions=system_prompt,
-            input_messages=input_messages
+            tools_registry=tools_registry,
+            config=config
         )
         
-        # Получаем ответ от LLM
-        message = response.choices[0].message
+        # Запускаем один ход диалога
+        result = orchestrator.run_turn(
+            user_message=user_message,
+            history=history,
+            chat_id=chat_id
+        )
         
-        # Проверяем, есть ли content в ответе
-        if message.content is None or not message.content.strip():
-            # Если content пустой, но есть tool_calls - это ошибка, так как инструменты не используются
-            if hasattr(message, 'tool_calls') and message.tool_calls:
-                logger.warning("Получен ответ с tool_calls вместо content в contact_collector (инструменты не используются)")
-            
-            # Если content пустой, используем дефолтное сообщение
-            logger.warning("Получен пустой ответ от LLM в contact_collector, используем дефолтное сообщение")
-            reply = "Хорошо, пожалуйста, напишите ваше имя и номер телефона."
-        else:
-            reply = message.content.strip()
+        # Получаем ответ
+        reply = result.get("reply", "")
+        tool_calls = result.get("tool_calls", [])
+        
+        # Преобразуем новые сообщения из orchestrator в BaseMessage объекты
+        new_messages_dicts = result.get("new_messages", [])
+        new_messages = dicts_to_messages(new_messages_dicts) if new_messages_dicts else []
+        
+        # Проверяем, был ли вызван CallManager
+        if result.get("call_manager"):
+            logger.info("CallManager был вызван в contact_collector_node")
+            return {
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
+                "answer": result.get("reply", ""),
+                "manager_alert": result.get("manager_alert"),
+                "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
+                "tool_results": tool_calls if tool_calls else []
+            }
         
         logger.info(f"Contact collector ответил: {reply[:100]}...")
         
@@ -144,22 +137,22 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
             extracted_info=extracted_info
         )
         
-        # КРИТИЧНО: Создаем AIMessage для сохранения в истории LangGraph
-        from langchain_core.messages import AIMessage
-        new_messages = [AIMessage(content=reply)]
-        
         # Если JSON найден и состояние обновлено - не отправляем сообщение клиенту
         if updated_extracted_info:
             logger.info("JSON найден в ответе contact_collector, состояние обновлено, пропускаем отправку сообщения клиенту")
             return {
                 "messages": new_messages,
                 "answer": "",  # Пустой answer - процесс продолжается автоматически
-                "extracted_info": updated_extracted_info
+                "extracted_info": updated_extracted_info,
+                "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
+                "tool_results": tool_calls if tool_calls else []
             }
         
         return {
-            "messages": new_messages,  # КРИТИЧНО: Возвращаем сообщение для сохранения в истории
-            "answer": reply
+            "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения
+            "answer": reply,
+            "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
+            "tool_results": tool_calls if tool_calls else []
         }
         
     except Exception as e:

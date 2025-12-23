@@ -14,6 +14,7 @@ from ....services.logger_service import logger
 # Импортируем инструменты
 from ....agents.tools.view_service.tool import ViewService
 from ....agents.tools.masters.tool import Masters
+from ....agents.tools.call_manager import CallManager
 
 
 def _build_system_prompt(service_name: Optional[str]) -> str:
@@ -27,7 +28,6 @@ def _build_system_prompt(service_name: Optional[str]) -> str:
         Системный промпт для LLM
     """    
     prompt = f"""Ты эксперт по услугам салона красоты LookTown. 
-{context_section}
 Твой стиль общения — дружелюбный, профессиональный, от женского лица, на "вы". 
 
 ИНСТРУКЦИЯ: Тебе запрещено отвечать без использования инструментов, либо использовать свои знания вместо данных, полученных из инструментов.
@@ -37,6 +37,8 @@ def _build_system_prompt(service_name: Optional[str]) -> str:
 
 После ответа на вопрос клиента ОБЯЗАТЕЛЬНО задай вовлекающий вопрос, чтобы вернуть клиента к записи:
    - Хотели бы записаться?"
+
+Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
 """
     
     return prompt
@@ -82,6 +84,7 @@ def about_service_manager_node(state: ConversationState) -> ConversationState:
         # Регистрируем необходимые инструменты
         tools_registry.register_tool(ViewService)
         tools_registry.register_tool(Masters)
+        tools_registry.register_tool(CallManager)
         
         # Создаем orchestrator
         config = ResponsesAPIConfig()

@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from yandex_cloud_ml_sdk._threads.thread import Thread
 
 from ..common.yclients_service import YclientsService
-from .logic import find_slots_by_period, _is_generic_master_term
+from .logic import find_slots_by_period, _is_generic_master_term, find_alternative_masters_slots
 
 try:
     from ....services.logger_service import logger
@@ -91,27 +91,110 @@ class FindSlots(BaseModel):
             masters = result.get('masters', [])
             
             if not masters:
+                # Если указан мастер и слоты не найдены, проверяем альтернативных мастеров
+                if master_name_to_use or self.master_id:
+                    alternative_result = asyncio.run(
+                        find_alternative_masters_slots(
+                            yclients_service=yclients_service,
+                            service_id=self.service_id,
+                            excluded_master_id=self.master_id,
+                            excluded_master_name=master_name_to_use,
+                            time_period=self.time_period or "",
+                            date=self.date,
+                            date_range=self.date_range
+                        )
+                    )
+                    
+                    if alternative_result.get('error'):
+                        # Если ошибка при проверке альтернативных, возвращаем стандартное сообщение
+                        if time_period:
+                            period_display = self._format_time_period_display(time_period)
+                            period_text = f" {period_display}"
+                        else:
+                            period_text = ""
+                        
+                        master_display = master_name_to_use or f"мастера {self.master_id}"
+                        if self.date:
+                            return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
+                        elif self.date_range:
+                            return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
+                        else:
+                            return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
+                    else:
+                        alternative_masters = alternative_result.get('masters', [])
+                        all_masters_checked = alternative_result.get('all_masters_checked', [])
+                        
+                        if time_period:
+                            period_display = self._format_time_period_display(time_period)
+                            period_text = f" {period_display}"
+                        else:
+                            period_text = ""
+                        
+                        master_display = master_name_to_use or f"мастера {self.master_id}"
+                        
+                        if alternative_masters:
+                            # Есть мастера с доступными слотами
+                            result_lines = []
+                            
+                            if self.date:
+                                result_lines.append(f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}.")
+                            elif self.date_range:
+                                result_lines.append(f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в указанный период.")
+                            else:
+                                result_lines.append(f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни.")
+                            
+                            result_lines.append("")
+                            result_lines.append(f"Свободные слоты{period_text} есть у следующих мастеров:")
+                            result_lines.append("")
+                            
+                            # Выводим слоты для каждого альтернативного мастера
+                            for master_data in alternative_masters:
+                                alt_master_name = master_data.get('master_name', 'Неизвестный мастер')
+                                master_results = master_data.get('results', [])
+                                
+                                if not master_results:
+                                    continue
+                                
+                                result_lines.append(f"**Мастер {alt_master_name}**:")
+                                
+                                for day_result in master_results:
+                                    date = day_result['date']
+                                    slots = day_result['slots']
+                                    
+                                    try:
+                                        date_obj = datetime.strptime(date, "%Y-%m-%d")
+                                        formatted_date = date_obj.strftime("%d.%m.%Y")
+                                    except:
+                                        formatted_date = date
+                                    
+                                    slots_text = " | ".join(slots)
+                                    result_lines.append(f"  {formatted_date}: {slots_text}")
+                                
+                                result_lines.append("")  # Пустая строка между мастерами
+                            
+                            return "\n".join(result_lines).strip()
+                        else:
+                            # Нет слотов ни у одного мастера
+                            if self.date:
+                                return f"К сожалению, свободных слотов{period_text} на услугу '{service_title}' нет ни у одного мастера на {self.date}."
+                            elif self.date_range:
+                                return f"К сожалению, свободных слотов{period_text} на услугу '{service_title}' нет ни у одного мастера в указанный период."
+                            else:
+                                return f"К сожалению, свободных слотов{period_text} на услугу '{service_title}' нет ни у одного мастера в ближайшие дни."
+                
+                # Если мастер не указан, возвращаем стандартное сообщение
                 if time_period:
                     period_display = self._format_time_period_display(time_period)
                     period_text = f" {period_display}"
                 else:
                     period_text = ""
                 
-                if master_name_to_use or self.master_id:
-                    master_display = master_name_to_use or f"мастера {self.master_id}"
-                    if self.date:
-                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
-                    elif self.date_range:
-                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
-                    else:
-                        return f"К сожалению, у {master_display} нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
+                if self.date:
+                    return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
+                elif self.date_range:
+                    return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
                 else:
-                    if self.date:
-                        return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' на {self.date}."
-                    elif self.date_range:
-                        return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' в указанный период."
-                    else:
-                        return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
+                    return f"К сожалению, нет свободных слотов{period_text} для услуги '{service_title}' в ближайшие дни."
             
             if time_period:
                 period_display = self._format_time_period_display(time_period)

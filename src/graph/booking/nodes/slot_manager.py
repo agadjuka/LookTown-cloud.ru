@@ -17,6 +17,7 @@ from ....services.logger_service import logger
 from ....agents.tools.find_slots.tool import FindSlots
 from ....agents.tools.find_slots.logic import find_slots_by_period
 from ....agents.tools.common.yclients_service import YclientsService
+from ....agents.tools.call_manager import CallManager
 
 
 def slot_manager_node(state: ConversationState) -> ConversationState:
@@ -349,6 +350,7 @@ def _find_and_offer_slots(
         
         # Регистрируем инструмент FindSlots
         tools_registry.register_tool(FindSlots)
+        tools_registry.register_tool(CallManager)
         
         # Создаем orchestrator
         config = ResponsesAPIConfig()
@@ -500,8 +502,9 @@ def _build_system_prompt(
                     params_instructions += f"- date: передай '{date_match.group(1)}'\n"
     
     prompt = f"""Ты — AI-администратор салона красоты LookTown. Сейчас этап выбора услуги.
-Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица, здоровайся с клиентом, но только один раз.
+Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица, Здоровайся если это первое сообщение клиента.
 ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ КЛИЕНТА О ЖЕЛАЕМОЙ УСЛУГЕ, КОНТАКТНЫХ ДАННЫХ ИЛИ ГОВОРИТЬ ЧТО ТЫ ЕГО ЗАПИСАЛ НА УСЛУГУ.
+ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ПРИДУМЫВАТЬ ДОСТУПНЫЕ СЛОТЫ, БЕРИ ИХ ТОЛЬКО ИЗ ИНСТРУМЕНТА `FindSlots`.
 
 КОНТЕКСТ:
 - Выбранная услуга ID: {service_id}
@@ -514,11 +517,9 @@ def _build_system_prompt(
 {params_instructions}
 1 Если клиент указал пожелания (например, "вечером", "завтра", "после 18:00") — передай это в аргумент `time_period` или `date` инструмента `FindSlots`.
 2 Если пожеланий нет — вызови `FindSlots` без строгих ограничений (на ближайшие дни), чтобы предложить варианты.
-
 3 Если клиент выбрал слот (в том числе если назвал имя мастера у которого только один доступный слот, верни ТОЛЬКО JSON времененем услуги в формате:  {{"slot_time": "YYYY-MM-DD HH:MM"}} 
-
-
-
+Если доступных слотов нет, скажи об этом клиенту, предложи подобрать другие слоты или время. НИКОГДА НЕ ПРИДУМАВАЙ ДОСТУПНЫЕ СЛОТЫ, БЕРИ ИХ ТОЛЬКО ИЗ ИНСТРУМЕНТА `FindSlots`.
+Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
 """
     
     return prompt

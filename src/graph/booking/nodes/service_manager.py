@@ -14,6 +14,7 @@ from ....services.logger_service import logger
 # Импортируем инструменты
 from ....agents.tools.get_categories.tool import GetCategories
 from ....agents.tools.find_service.tool import FindService
+from ....agents.tools.call_manager import CallManager
 
 
 def _build_system_prompt(
@@ -57,7 +58,7 @@ def _build_system_prompt(
         context_section = "\nКОНТЕКСТ:\n" + "\n".join(context_parts) + "\n"
     
     prompt = f"""Ты — AI-администратор салона красоты LookTown. Сейчас этап выбора услуги.
-Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица. Здоровайся с клиентом если не здоровался в переписке ранее. Если тебе нужно использовать инструмент, то не отвечай клиенту без использования инструмента.
+Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица. Обязательно здоровайся если это первое сообщение клиента. Если тебе нужно использовать инструмент, то не отвечай клиенту без использования инструмента.
 
 ТВОЯ ЗАДАЧА: Помочь клиенту выбрать услугу, чтобы мы получили её ID. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ КЛИЕНТА О ВРЕМЕНИ ДЛЯ ЗАПИСИ, КОНТАКТНЫХ ДАННЫХ ИЛИ ГОВОРИТЬ ЧТО ТЫ ЕГО ЗАПИСАЛ НА УСЛУГУ.
 Твой главный источник данных: {context_section}
@@ -74,6 +75,7 @@ def _build_system_prompt(
 - Сохраняй список нумерованным точо также как получаешь из инструмента.
 - Если клиент решил сменить услугу или мастера - начинай сначала (не считая приветствия) по инструкции - вызывай инструменты снова.
 
+Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
 """
     
     return prompt
@@ -132,6 +134,7 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         # Регистрируем необходимые инструменты
         tools_registry.register_tool(GetCategories)
         tools_registry.register_tool(FindService)
+        tools_registry.register_tool(CallManager)
         
         # Создаем orchestrator
         config = ResponsesAPIConfig()
