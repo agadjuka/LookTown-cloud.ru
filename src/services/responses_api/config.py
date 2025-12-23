@@ -20,7 +20,7 @@ class ResponsesAPIConfig:
         
         # Параметры модели по умолчанию
         self.max_tokens = 2500
-        self.temperature = 0
+        self.temperature = 0.1
         self.top_p = 0.95
         self.presence_penalty = 0
     

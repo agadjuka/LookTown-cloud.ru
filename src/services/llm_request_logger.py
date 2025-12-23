@@ -1,6 +1,6 @@
 """
 Простая система логирования запросов к LLM
-Сохраняет только чистый JSON без форматирования
+Сохраняет форматированный JSON для удобного просмотра
 """
 import os
 import json
@@ -11,7 +11,7 @@ from threading import Lock
 
 
 class LLMRequestLogger:
-    """Простой логгер - сохраняет только чистый JSON запросов к LLM"""
+    """Простой логгер - сохраняет форматированный JSON запросов к LLM"""
     
     _instance = None
     _lock = Lock()
@@ -106,9 +106,9 @@ class LLMRequestLogger:
                     "request": clean_data
                 }
                 
-                # Сохраняем как чистый JSON без форматирования
+                # Сохраняем как форматированный JSON для читаемости
                 with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(final_data, f, ensure_ascii=False, separators=(',', ':'))
+                    json.dump(final_data, f, ensure_ascii=False, indent=2)
                 
                 return request_id
                 
@@ -149,9 +149,9 @@ class LLMRequestLogger:
                     "response": clean_data
                 }
                 
-                # Сохраняем как чистый JSON без форматирования
+                # Сохраняем как форматированный JSON для читаемости
                 with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(final_data, f, ensure_ascii=False, separators=(',', ':'))
+                    json.dump(final_data, f, ensure_ascii=False, indent=2)
                 
         except Exception as e:
             print(f"Ошибка сохранения ответа: {e}")
