@@ -66,12 +66,8 @@ class ViewService(BaseModel):
             result_lines = []
             
             title = service.get('title', 'Неизвестно')
-            result_lines.append(f"Услуга: {title}")
-            result_lines.append(f"ID услуги: {service.get('id', 'Не указан')}")
-            
-            category_id = service.get('category_id')
-            if category_id:
-                result_lines.append(f"ID категории: {category_id}")
+            service_id = service.get('id', 'Не указан')
+            result_lines.append(f"Услуга: {title} (ID: {service_id})")
             
             duration_sec = service.get('duration_sec')
             if duration_sec:
@@ -99,6 +95,8 @@ class ViewService(BaseModel):
                     result_lines.append(f"  • {master_name} (ID: {master_id})")
             else:
                 result_lines.append("\nМастера не найдены")
+            
+            result_lines.append("\n((Сохраняй форматирование))")
             
             return "\n".join(result_lines)
             
