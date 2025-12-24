@@ -103,7 +103,8 @@ IMPORTANT:
 
   (Decline the master's name if possible).
 
-If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
+.
 """
     
     try:

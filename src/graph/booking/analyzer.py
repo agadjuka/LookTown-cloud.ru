@@ -72,7 +72,8 @@ Examples:
 - "Меня зовут Аня" -> {{"client_name": "Аня"}}
 - "Запиши на завтра в 10" -> {{"slot_time": "2024-12-21 10:00"}}
 
-If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager."""
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
+."""
 
     # Подготавливаем историю для контекста
     # ВАЖНО: Передаем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста
