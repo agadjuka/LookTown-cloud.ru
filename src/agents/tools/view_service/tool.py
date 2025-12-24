@@ -96,7 +96,7 @@ class ViewService(BaseModel):
             else:
                 result_lines.append("\nМастера не найдены")
             
-            result_lines.append("\n((Сохраняй форматирование))")
+            result_lines.append("\n((Отправь клиенту этот текст, сохраняй форматирование, не пиши ничего от себя))")
             
             return "\n".join(result_lines)
             

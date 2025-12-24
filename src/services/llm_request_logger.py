@@ -29,8 +29,22 @@ class LLMRequestLogger:
             return
         
         # Проверяем, нужно ли сохранять логи
-        # По умолчанию включено, можно отключить через переменную окружения DISABLE_DEBUG_LOGS=true
-        self.logging_enabled = os.getenv('DISABLE_DEBUG_LOGS', 'false').lower() != 'true'
+        # Поддерживаются две переменные окружения:
+        # - ENABLE_LLM_LOGGING (приоритетная): 'true' - включить, 'false' - отключить
+        # - DISABLE_DEBUG_LOGS (для обратной совместимости): 'true' - отключить
+        # По умолчанию логирование включено
+        enable_logging = os.getenv('ENABLE_LLM_LOGGING', '').lower()
+        disable_logging = os.getenv('DISABLE_DEBUG_LOGS', '').lower()
+        
+        if enable_logging:
+            # Новая переменная имеет приоритет
+            self.logging_enabled = enable_logging == 'true'
+        elif disable_logging:
+            # Старая переменная для обратной совместимости
+            self.logging_enabled = disable_logging != 'true'
+        else:
+            # По умолчанию включено
+            self.logging_enabled = True
         
         if self.logging_enabled:
             self.logs_dir = Path("logs")
