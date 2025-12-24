@@ -21,36 +21,36 @@ except ImportError:
 
 class FindSlots(BaseModel):
     """
-    Найти доступные временные слоты для услуги.
+    Find available time slots for a service.
     """
     
     service_id: int = Field(
-        description="ID услуги. Получи из GetServices"
+        description="Service ID. Get from GetServices"
     )
     
     time_period: Optional[str] = Field(
         default=None,
-        description="Период времени (необязательное поле). Поддерживаемые форматы: 'morning' (9:00-11:00), 'day' (11:00-17:00), 'evening' (17:00-22:00); конкретное время '16:00' интервал '16:00-19:00' 'before 11:00'; 'after 16:00' (после 16:00)."
+        description="Time period (optional field). Supported formats: 'morning' (9:00-11:00), 'day' (11:00-17:00), 'evening' (17:00-22:00); specific time '16:00' interval '16:00-19:00' 'before 11:00'; 'after 16:00' (after 16:00)."
     )
     
     master_name: Optional[str] = Field(
         default=None,
-        description="Имя мастера (необязательное поле). Заполняй только если клиент хочет записаться к конкретному мастеру."
+        description="Master name (optional field). Fill only if the client wants to book with a specific master."
     )
     
     master_id: Optional[int] = Field(
         default=None,
-        description="ID мастера (необязательное поле). Заполняй только если знаешь точный ID мастера. Если указан master_id, то master_name игнорируется."
+        description="Master ID (optional field). Fill only if you know the exact master ID. If master_id is specified, master_name is ignored."
     )
     
     date: Optional[str] = Field(
         default=None,
-        description="Конкретная дата (необязательное поле). Формат: 'YYYY-MM-DD' Если клиент просит найти ближайшую дату или справшивает когда есть свободые слоты - оставь пустым."
+        description="Specific date (optional field). Format: 'YYYY-MM-DD' If the client asks to find the nearest date or asks when there are free slots - leave empty."
     )
     
     date_range: Optional[str] = Field(
         default=None,
-        description="Интервал дат (необязательное поле). Формат: 'YYYY-MM-DD:YYYY-MM-DD'"
+        description="Date range (optional field). Format: 'YYYY-MM-DD:YYYY-MM-DD'"
     )
     
     def process(self, thread: Thread) -> str:

@@ -19,8 +19,8 @@ except ImportError:
 
 class AboutSalon(BaseModel):
     """
-    Получить полную информацию о салоне.
-    Используй когда клиент спрашивает "расскажите о салоне", "что такое LookTown", "где вы находитесь" или подобные вопросы о салоне.
+    Get complete information about the salon.
+    Use when the client asks "расскажите о салоне", "что такое LookTown", "где вы находитесь" or similar questions about the salon.
     """
     
     def process(self, thread: Thread) -> str:

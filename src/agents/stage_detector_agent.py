@@ -22,15 +22,15 @@ class StageDetectorAgent(BaseAgent):
     """Агент для определения стадии диалога"""
     
     def __init__(self, langgraph_service: LangGraphService):
-        instruction = """Прочитай последнее сообщение клиента и ознакомься с историей переписки. Определи, какой агент подходит больше всего. 
-**СПИСОК Агентов:**
-- booking: основной агент, связанный с записями на услугу либо получением информации об услугах, салоне и тд. Выбирай всегда когда не подходят другие агенты.
-- cancellation_request: Клиент просит отменить существующую запись.
-- reschedule: Клиент просит перенести существующую запись на другую дату или время. Говорит что опаздывает и т.д.
-- view_my_booking: Клиент хочет посмотреть свои предстоящие записи ("на когда я записан?", "какие у меня записи?").
+        instruction = """Read the client's last message and review the conversation history. Determine which agent is most suitable. 
+**AGENT LIST:**
+- booking: main agent, related to service bookings or getting information about services, salon, etc. Always choose when other agents don't fit.
+- cancellation_request: Client asks to cancel an existing booking.
+- reschedule: Client asks to reschedule an existing booking to another date or time. Says they are running late, etc.
+- view_my_booking: Client wants to see their upcoming bookings ("на когда я записан?", "какие у меня записи?").
 
-Верни ТОЛЬКО одно слово - название стадии. ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ОТВЕЧАТЬ КЛИЕНТУ или отправлять какие либо Json форматы.
-Примеры правильной работы:
+Return ONLY one word - the stage name. YOU ARE STRICTLY FORBIDDEN TO RESPOND TO THE CLIENT or send any Json formats.
+Examples of correct work:
 User: Хочу записаться на 5 вечера.
 Assistant: booking
 
@@ -59,7 +59,7 @@ Assistant: booking
         # Это сообщение будет вставлено в orchestrator после истории и перед user_message
         reminder_message = {
             "role": "system",
-            "content": "Остановись. Не отвечай на вопрос. Проанализируй последнее сообщение и верни ТОЛЬКО название стадии из списка выше."
+            "content": "Stop. Do not answer the question. Analyze the last message and return ONLY the stage name from the list above."
         }
         modified_history.append(reminder_message)
         

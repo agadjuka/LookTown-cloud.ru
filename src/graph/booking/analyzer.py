@@ -48,31 +48,31 @@ def booking_analyzer_node(state: ConversationState) -> ConversationState:
     current_state_details = _format_current_state(booking_state)
     
     # Формируем промпт для LLM
-    system_prompt = f"""Ты — аналитический модуль. Твоя задача — вернуть JSON с обновленными данными на основе диалога.
+    system_prompt = f"""You are an analytical module. Your task is to return JSON with updated data based on the dialogue.
 
-ТЕКУЩИЕ ДАННЫЕ: {current_state_details}
-СООБЩЕНИЕ КЛИЕНТА: {last_user_message}
+CURRENT DATA: {current_state_details}
+CLIENT MESSAGE: {last_user_message}
 
-ПРАВИЛА ИЗВЛЕЧЕНИЯ (Верни JSON):
-1. Service ID: Извлекай `service_id` (8 цифр) из инструментов (role="tool"). ТОЛЬКО когда клиент выбрал её для записи. НИКОГДА не придумывай ID. Не извлекай если клиент интересуется деталями услуги, мастерами которые её делают и тд до момента пока он не утвердит эту услугу.
-2. Service Name: Если клиент пишет название услуги (текстом, или "хочу стрижку"), верни `service_name`.
-3. СМЕНА ТЕМЫ (ВАЖНО): Если клиент меняет желание (например, хотел маникюр, теперь пишет про педикюр) — верни новое `service_name` и установи `service_id`, `master_id`, `slot_time` в null.
-4. Slot: Дата/время в формате "YYYY-MM-DD HH:MM" (заполняй только если клиент назвал точное время)
-5. Contacts: `client_name` и `client_phone` (только цифры/+).
-6. Master: `master_id` (из tool) или `master_name`. (мастер/топ-мастер/юниор не релевантны). Заполняй только если клиент хочет к конкретному мастеру.   
+EXTRACTION RULES (Return JSON):
+1. Service ID: Extract `service_id` (8 digits) from tools (role="tool"). ONLY when the client chose it for booking. NEVER make up IDs. Do not extract if the client is interested in service details, masters who perform it, etc. until they confirm this service.
+2. Service Name: If the client writes a service name (as text, or "хочу стрижку"), return `service_name`.
+3. TOPIC CHANGE (IMPORTANT): If the client changes their desire (e.g., wanted a manicure, now writes about a pedicure) — return the new `service_name` and set `service_id`, `master_id`, `slot_time` to null.
+4. Slot: Date/time in format "YYYY-MM-DD HH:MM" (fill only if the client named an exact time)
+5. Contacts: `client_name` and `client_phone` (digits/+ only).
+6. Master: `master_id` (from tool) or `master_name`. (мастер/топ-мастер/юниор are not relevant). Fill only if the client wants a specific master.   
 
-Исключение: Если клиент хочет узнать подробности об услуге (спрашивает детали какой либо услуги), мастере (инетересуется мастером который делает эту услугу), мастерах которые делают услугу тогда: Добавь в JSON поле `"service_details_needed": true` (не делай этого когда клиент хочет записаться)
+Exception: If the client wants to learn details about a service (asks for details of any service), master (interested in the master who performs this service), masters who perform the service then: Add the field `"service_details_needed": true` to JSON (do not do this when the client wants to book). If user already got info about services/masters, and want book - dont add it.
 
-ВАЖНО:
-- Верни ТОЛЬКО те поля, которые изменились.
-- СМЕНА УСЛУГИ ИЛИ МАСТЕРА: Если клиент хотел записаться на одну услугу (service_id уже заполнен) или к конкретному мастеру (master_id уже заполнен) а потом решил поменять услугу или мастера, ты ОБЯЗАН сбросить `service_id`, `slot_time`, `master_id`, `master_name` в null. Но если меняется услуга на ту, ID которой тебе известно - отправляй правильный ID.
+IMPORTANT:
+- Return ONLY the fields that have changed.
+- SERVICE OR MASTER CHANGE: If the client wanted to book one service (service_id already filled) or with a specific master (master_id already filled) and then decided to change the service or master, you MUST reset `service_id`, `slot_time`, `master_id`, `master_name` to null. But if the service changes to one whose ID you know - send the correct ID.
 
-Примеры:
-- "Хочу педикюр" (при текущем маникюре) -> {{"service_name": "педикюр", "service_id": null, "slot_time": null}}
+Examples:
+- "Хочу педикюр" (with current manicure) -> {{"service_name": "педикюр", "service_id": null, "slot_time": null}}
 - "Меня зовут Аня" -> {{"client_name": "Аня"}}
 - "Запиши на завтра в 10" -> {{"slot_time": "2024-12-21 10:00"}}
 
-Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера."""
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager."""
 
     # Подготавливаем историю для контекста
     # ВАЖНО: Передаем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста

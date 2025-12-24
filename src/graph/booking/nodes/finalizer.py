@@ -86,26 +86,26 @@ def finalizer_node(state: ConversationState) -> ConversationState:
     master_info_text = f" к мастеру {master_name}" if master_name else ""
     confirmation_template = f"Готово! Я записала вас на {service_name} {slot_time_formatted}{master_info_text}. Будем вас ждать!"
     
-    system_prompt = f"""Ты — AI-администратор салона LookTown. Сейчас этап финализации (Шаг 4).
+    system_prompt = f"""You are an AI administrator of the LookTown salon. Currently at the finalization stage (Step 4).
 
-ИНСТРУКЦИЯ:
-Шаг 4: Финализируй запись.
-Данные собраны. ТЫ ОБЯЗАН ВЫЗВАТЬ инструмент `create_booking` с имеющимися данными.
+INSTRUCTION:
+Step 4: Finalize the booking.
+Data collected. YOU MUST CALL the `create_booking` tool with the available data.
 
-ДАННЫЕ ДЛЯ ИНСТРУМЕНТА create_booking (используй ТОЧНО эти значения):
-- service_id: {service_id} (обязательно, число)
-- client_name: "{client_name}" (обязательно, строка)
-- client_phone: "{client_phone}" (обязательно, строка)
-- datetime: "{slot_time}" (обязательно, формат YYYY-MM-DD HH:MM)
-{f'- master_name: "{master_name}" (опционально, только если указан)' if master_name else '- master_name: НЕ УКАЗЫВАЙ этот параметр, если его нет'}
+DATA FOR create_booking TOOL (use EXACTLY these values):
+- service_id: {service_id} (required, number)
+- client_name: "{client_name}" (required, string)
+- client_phone: "{client_phone}" (required, string)
+- datetime: "{slot_time}" (required, format YYYY-MM-DD HH:MM)
+{f'- master_name: "{master_name}" (optional, only if specified)' if master_name else '- master_name: DO NOT specify this parameter if it is not available'}
 
-ВАЖНО:
-- ОБЯЗАТЕЛЬНО вызови инструмент create_booking ПРЯМО СЕЙЧАС с этими данными.
-- После успешного вызова инструмента, подтверди запись клиенту:
+IMPORTANT:
+- MANDATORY call the create_booking tool RIGHT NOW with this data.
+- After successful tool call, confirm the booking to the client:
   "{confirmation_template}"
-  (Склоняй имя мастера, если возможно).
+  (Decline the master's name if possible).
 
-Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
 """
     
     try:

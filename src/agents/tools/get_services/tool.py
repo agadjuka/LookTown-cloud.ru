@@ -19,11 +19,11 @@ except ImportError:
 
 class GetServices(BaseModel):
     """
-    Получить список услуг указанной категории с ценами и ID услуг.
+    Get a list of services for the specified category with prices and service IDs.
     """
     
     category_id: str = Field(
-        description="ID категории (строка). Доступные категории: '1' - Маникюр, '2' - Педикюр, '3' - Услуги для мужчин, '4' - Брови, '5' - Ресницы, '6' - Макияж, '7' - Парикмахерские услуги, '8' - Пирсинг, '9' - Лазерная эпиляция, '10' - Косметология, '11' - Депиляция, '12' - Массаж, '13' - LOOKTOWN SPA."
+        description="Category ID (string). Available categories: '1' - Маникюр, '2' - Педикюр, '3' - Услуги для мужчин, '4' - Брови, '5' - Ресницы, '6' - Макияж, '7' - Парикмахерские услуги, '8' - Пирсинг, '9' - Лазерная эпиляция, '10' - Косметология, '11' - Депиляция, '12' - Массаж, '13' - LOOKTOWN SPA."
     )
     
     def _format_services_with_master_levels(self, category_name: str, services: list) -> str:

@@ -16,7 +16,7 @@ except ImportError:
 
 class Greet(BaseModel):
     """
-    Если клиент написал только приветствие.
+    If the client wrote only a greeting.
     """
     
     def process(self, thread: Thread) -> str:

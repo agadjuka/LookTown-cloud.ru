@@ -19,8 +19,8 @@ except ImportError:
 
 class Masters(BaseModel):
     """
-    Получить полную информацию о мастерах салона.
-    Используй когда клиент спрашивает "какие у вас мастера?", "расскажите про мастеров", "кто работает в салоне" или подобные вопросы о мастерах.
+    Get complete information about salon masters.
+    Use when the client asks "какие у вас мастера?", "расскажите про мастеров", "кто работает в салоне" or similar questions about masters.
     """
     
     def process(self, thread: Thread) -> str:

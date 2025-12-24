@@ -19,7 +19,7 @@ except ImportError:
 
 class GetCategories(BaseModel):
     """
-    Получить список всех категорий услуг с их ID.
+    Get a list of all service categories with their IDs.
     """
     
     def process(self, thread: Thread) -> str:

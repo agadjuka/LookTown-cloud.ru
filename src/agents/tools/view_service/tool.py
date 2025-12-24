@@ -19,12 +19,12 @@ except ImportError:
 
 class ViewService(BaseModel):
     """
-    Получить детальную информацию об услуге по её ID.
-    Используй когда нужно узнать подробности об услуге: название, цену, продолжительность, список мастеров.
+    Get detailed information about a service by its ID.
+    Use when you need to find out details about a service: name, price, duration, list of masters.
     """
     
     service_id: int = Field(
-        description="ID услуги. Получи из GetServices"
+        description="Service ID. Get from GetServices"
     )
     
     def process(self, thread: Thread) -> str:

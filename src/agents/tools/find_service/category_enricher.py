@@ -2,7 +2,7 @@
 Модуль для обогащения услуг информацией о категориях
 """
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from ..common.yclients_service import YclientsService
 
 

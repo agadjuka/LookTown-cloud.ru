@@ -23,17 +23,17 @@ except ImportError:
 
 class FindService(BaseModel):
     """
-    Найти услуги по названию. Поиск выполняется по похожим названиям, не требует точного совпадения.
-    Если указано имя мастера, то ищет мастера по имени и услуге, возвращая информацию о мастере и его услугах.
+    Find services by name. Search is performed by similar names, does not require exact match.
+    If a master name is specified, it searches for a master by name and service, returning information about the master and their services.
     """
     
     service_name: str = Field(
-        description="Название услуги для поиска (текст)"
+        description="Service name to search for (text)"
     )
     
     master_name: Optional[str] = Field(
         default=None,
-        description="Имя мастера (необязательное поле). Если указано, то ищет мастера по имени и услуге"
+        description="Master name (optional field). If specified, searches for a master by name and service"
     )
     
     def _format_services_with_master_levels(self, category_name: str, services: list) -> str:

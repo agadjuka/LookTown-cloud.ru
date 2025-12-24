@@ -70,18 +70,18 @@ def contact_collector_node(state: ConversationState) -> ConversationState:
         slot_time_formatted = slot_time
     
     # Формируем системный промпт согласно ТЗ
-    system_prompt = f"""Ты — AI-администратор салона LookTown. 
-Твой стиль: дружелюбный, профессиональный, краткий.
+    system_prompt = f"""You are an AI administrator of the LookTown salon.
+Your style: friendly, professional, brief.
 
-ТЕКУЩИЕ ДАННЫЕ:
-- Дата и время записи: {slot_time_formatted}
+CURRENT DATA:
+- Booking date and time: {slot_time_formatted}
 
-ИНСТРУКЦИЯ:
-Тебе нужно получить имя и номер телефона клиента.
+INSTRUCTION:
+You need to get the client's name and phone number.
 
-Примерная формулировка: Хорошо, пожалуйста, напишите ваше имя и номер телефона. (можешь менять в зависимости от ситуации)
+Approximate phrasing: Хорошо, пожалуйста, напишите ваше имя и номер телефона. (you can change depending on the situation)
 
-Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
 """
     
     try:

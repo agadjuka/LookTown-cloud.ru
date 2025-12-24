@@ -148,11 +148,11 @@ def _is_future_record(datetime_str: str) -> bool:
 
 class GetClientRecords(BaseModel):
     """
-    Найти клиента по номеру телефона и получить все его будущие записи.
+    Find a client by phone number and get all their future bookings.
     """
     
     phone: str = Field(
-        description="Номер телефона клиента"
+        description="Client phone number"
     )
     
     def process(self, thread: Thread) -> str:

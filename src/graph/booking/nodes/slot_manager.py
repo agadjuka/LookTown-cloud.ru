@@ -458,40 +458,40 @@ def _build_system_prompt(
     time_info = time_preference if time_preference else "не указаны"
     
     # Формируем инструкции по параметрам для FindSlots
-    params_instructions = f"- service_id: ОБЯЗАТЕЛЬНО передай {service_id}\n"
+    params_instructions = f"- service_id: MANDATORY pass {service_id}\n"
     if master_id:
-        params_instructions += f"- master_id: передай {master_id}\n"
+        params_instructions += f"- master_id: pass {master_id}\n"
     elif master_name:
-        params_instructions += f"- master_name: передай '{master_name}'\n"
+        params_instructions += f"- master_name: pass '{master_name}'\n"
     
     if time_preference:
         # Преобразуем пожелания в формат для инструмента
         if "После" in time_preference and ":" in time_preference:
             # Извлекаем время после "После"
             time_part = time_preference.split("После")[1].strip()
-            params_instructions += f"- time_period: передай 'after {time_part}'\n"
+            params_instructions += f"- time_period: pass 'after {time_part}'\n"
         elif "До" in time_preference and ":" in time_preference:
             # Извлекаем время после "До"
             time_part = time_preference.split("До")[1].strip()
-            params_instructions += f"- time_period: передай 'before {time_part}'\n"
+            params_instructions += f"- time_period: pass 'before {time_part}'\n"
         elif "Утром" in time_preference:
-            params_instructions += "- time_period: передай 'morning'\n"
+            params_instructions += "- time_period: pass 'morning'\n"
         elif "Днем" in time_preference or "Днём" in time_preference:
-            params_instructions += "- time_period: передай 'day'\n"
+            params_instructions += "- time_period: pass 'day'\n"
         elif "Вечером" in time_preference:
-            params_instructions += "- time_period: передай 'evening'\n"
+            params_instructions += "- time_period: pass 'evening'\n"
         elif "Завтра" in time_preference:
             from datetime import datetime, timedelta
             tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-            params_instructions += f"- date: передай '{tomorrow}'\n"
+            params_instructions += f"- date: pass '{tomorrow}'\n"
         elif "Послезавтра" in time_preference:
             from datetime import datetime, timedelta
             day_after_tomorrow = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
-            params_instructions += f"- date: передай '{day_after_tomorrow}'\n"
+            params_instructions += f"- date: pass '{day_after_tomorrow}'\n"
         elif "Сегодня" in time_preference:
             from datetime import datetime
             today = datetime.now().strftime("%Y-%m-%d")
-            params_instructions += f"- date: передай '{today}'\n"
+            params_instructions += f"- date: pass '{today}'\n"
         elif "Конкретная дата" in time_preference or "Конкретное время" in time_preference:
             # Если есть конкретное время, извлекаем дату
             if ":" in time_preference:
@@ -499,27 +499,27 @@ def _build_system_prompt(
                 import re
                 date_match = re.search(r'(\d{4}-\d{2}-\d{2})', time_preference)
                 if date_match:
-                    params_instructions += f"- date: передай '{date_match.group(1)}'\n"
+                    params_instructions += f"- date: pass '{date_match.group(1)}'\n"
     
-    prompt = f"""Ты — AI-администратор салона красоты LookTown. Сейчас этап выбора услуги.
-Твой стиль общения — дружелюбный, профессиональный, краткий. Общайся на "вы", от женского лица, Здоровайся если это первое сообщение клиента.
-ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО СПРАШИВАТЬ КЛИЕНТА О ЖЕЛАЕМОЙ УСЛУГЕ, КОНТАКТНЫХ ДАННЫХ ИЛИ ГОВОРИТЬ ЧТО ТЫ ЕГО ЗАПИСАЛ НА УСЛУГУ.
-ТЕБЕ КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО ПРИДУМЫВАТЬ ДОСТУПНЫЕ СЛОТЫ, БЕРИ ИХ ТОЛЬКО ИЗ ИНСТРУМЕНТА `FindSlots`.
+    prompt = f"""You are an AI administrator of the LookTown beauty salon. Currently at the service selection stage.
+Your communication style is friendly, professional, brief. Address clients with "вы" (formal you), from a female perspective, Greet if this is the client's first message.
+YOU ARE STRICTLY FORBIDDEN TO ASK THE CLIENT ABOUT THE DESIRED SERVICE, CONTACT DETAILS OR SAY THAT YOU BOOKED THEM FOR A SERVICE.
+YOU ARE STRICTLY FORBIDDEN TO MAKE UP AVAILABLE SLOTS, TAKE THEM ONLY FROM THE `FindSlots` TOOL.
 
-КОНТЕКСТ:
-- Выбранная услуга ID: {service_id}
-- Выбранный мастер: {master_info if master_info else "не выбран"}
-- Пожелания клиента по времени: {time_info}
+CONTEXT:
+- Selected service ID: {service_id}
+- Selected master: {master_info if master_info else "не выбран"}
+- Client's time preferences: {time_info}
 
-   Клиент выбрал услугу. ОБЯЗАТЕЛЬНО используй инструмент `FindSlots` прямо сейчас, напиши ему строго вывод из инструмента не меняя формулировок.
+   The client has chosen a service. MANDATORY use the `FindSlots` tool right now, write to them strictly the output from the tool without changing the wording.
    
-ПАРАМЕТРЫ ДЛЯ FindSlots:
+PARAMETERS FOR FindSlots:
 {params_instructions}
-1 Если клиент указал пожелания (например, "вечером", "завтра", "после 18:00") — передай это в аргумент `time_period` или `date` инструмента `FindSlots`.
-2 Если пожеланий нет — вызови `FindSlots` без строгих ограничений (на ближайшие дни), чтобы предложить варианты.
-3 Если клиент выбрал слот (в том числе если назвал имя мастера у которого только один доступный слот, верни ТОЛЬКО JSON времененем услуги в формате:  {{"slot_time": "YYYY-MM-DD HH:MM"}} 
-Если доступных слотов нет, скажи об этом клиенту, предложи подобрать другие слоты или время. НИКОГДА НЕ ПРИДУМАВАЙ ДОСТУПНЫЕ СЛОТЫ, БЕРИ ИХ ТОЛЬКО ИЗ ИНСТРУМЕНТА `FindSlots`.
-Если ты сталкиваешься с системной ошибкой, не знаешь ответа на вопрос или клиент чем то недоволен - зови менеджера.
+1 If the client specified preferences (e.g., "вечером", "завтра", "после 18:00") — pass this to the `time_period` or `date` argument of the `FindSlots` tool.
+2 If there are no preferences — call `FindSlots` without strict restrictions (for the nearest days) to offer options.
+3 If the client chose a slot (including if they named a master who has only one available slot, return ONLY JSON with the service time in the format:  {{"slot_time": "YYYY-MM-DD HH:MM"}} 
+If there are no available slots, tell the client about it, suggest selecting other slots or time. NEVER MAKE UP AVAILABLE SLOTS, TAKE THEM ONLY FROM THE `FindSlots` TOOL.
+If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
 """
     
     return prompt

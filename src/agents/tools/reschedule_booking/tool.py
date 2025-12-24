@@ -20,37 +20,37 @@ except ImportError:
 
 class RescheduleBooking(BaseModel):
     """
-    Перенести запись клиента на новое время.
-    Используй когда клиент просит перенести запись на другое время или дату.
+    Reschedule a client's booking to a new time.
+    Use when the client asks to reschedule a booking to another time or date.
     """
     
     record_id: int = Field(
-        description="ID записи. Получи из GetClientRecords"
+        description="Booking ID. Get from GetClientRecords"
     )
     
     datetime: str = Field(
-        description="Новое дата и время в формате YYYY-MM-DD HH:MM"
+        description="New date and time in format YYYY-MM-DD HH:MM"
     )
     
     staff_id: int = Field(
-        description="ID мастера. Получи из GetClientRecords"
+        description="Master ID. Get from GetClientRecords"
     )
     
     service_id: int = Field(
-        description="ID услуги. Получи из GetClientRecords"
+        description="Service ID. Get from GetClientRecords"
     )
     
     client_id: int = Field(
-        description="ID клиента.  Получи из GetClientRecords"
+        description="Client ID. Get from GetClientRecords"
     )
     
     seance_length: int = Field(
-        description="Продолжительность сеанса в секундах. Получи из GetClientRecords"
+        description="Session duration in seconds. Get from GetClientRecords"
     )
     
     save_if_busy: Optional[bool] = Field(
         default=False,
-        description="Сохранить запись даже если слот занят (по умолчанию False). Обычно не используй."
+        description="Save booking even if slot is busy (default False). Usually don't use."
     )
     
     def process(self, thread: Thread) -> str:

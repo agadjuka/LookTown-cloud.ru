@@ -21,7 +21,7 @@ class ServiceDetails(BaseModel):
     title: str = Field(default="")
     name: str = Field(default="")
     staff: List[Master] = Field(default_factory=list)
-    duration: int = Field(default=0, description="Продолжительность услуги в секундах")
+    duration: int = Field(default=0, description="Service duration in seconds")
     category_id: Optional[int] = Field(default=None)
     price_min: Optional[float] = Field(default=None)
     price_max: Optional[float] = Field(default=None)

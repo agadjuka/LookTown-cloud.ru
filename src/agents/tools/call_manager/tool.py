@@ -23,17 +23,17 @@ class CallManagerException(Exception):
 
 class CallManager(BaseModel):
     """
-    Передать диалог менеджеру.
-    Используй этот инструмент в трех случаях:
-    1. Если клиент выражает сильное недовольство, жалуется, требует возврата денег
-    2. Если запрос клиента очень нестандартный и требует принятия бизнес-решения (например, обсуждение сотрудничества, особых скидок)
-    3. Если ты сталкиваешься с технической ошибкой при вызове других инструментов
+    Transfer the dialogue to a manager.
+    Use this tool in three cases:
+    1. If the client expresses strong dissatisfaction, complains, demands a refund
+    2. If the client's request is very non-standard and requires a business decision (e.g., discussing cooperation, special discounts)
+    3. If you encounter a technical error when calling other tools
     
-    После вызова этого инструмента твоя работа завершается - не давай никакого ответа клиенту.
+    After calling this tool, your work ends - do not give any response to the client.
     """
     
     reason: str = Field(
-        description="Краткое описание причины вызова менеджера. Например: 'Клиент жалуется на качество услуги'"
+        description="Brief description of the reason for calling the manager. For example: 'Клиент жалуется на качество услуги'"
     )
     
     def process(self, thread: Thread) -> str:

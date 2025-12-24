@@ -19,11 +19,11 @@ except ImportError:
 
 class CancelBooking(BaseModel):
     """
-    Отменить запись клиента по ID записи.
+    Cancel a client's booking by booking ID.
     """
     
     record_id: int = Field(
-        description="ID записи . Получи из GetClientRecords"
+        description="Booking ID. Get from GetClientRecords"
     )
     
     def process(self, thread: Thread) -> str:

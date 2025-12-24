@@ -20,29 +20,29 @@ except ImportError:
 
 class CreateBooking(BaseModel):
     """
-    Создать запись на услугу.
-    Используй когда клиент выбрал услугу, дату, время и предоставил свои данные (имя и телефон).
+    Create a booking for a service.
+    Use when the client has chosen a service, date, time and provided their data (name and phone).
     """
     
     service_id: int = Field(
-        description="ID услуги. Получи из GetServices"
+        description="Service ID. Get from GetServices"
     )
     
     client_name: str = Field(
-        description="Имя клиента"
+        description="Client name"
     )
     
     client_phone: str = Field(
-        description="Телефон клиента"
+        description="Client phone"
     )
     
     datetime: str = Field(
-        description="Дата и время записи в формате YYYY-MM-DD HH:MM"
+        description="Booking date and time in format YYYY-MM-DD HH:MM"
     )
     
     master_name: Optional[str] = Field(
         default=None,
-        description="Имя мастера (опционально) (если клиент явно просил записаться к конкретному мастеру). НЕ УКАЗЫВАЙ если клиент не просил конкретного мастера."
+        description="Master name (optional) (if the client explicitly asked to book with a specific master). DO NOT specify if the client did not ask for a specific master."
     )
     
     def process(self, thread: Thread) -> str:
