@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history, dicts_to_messages, filter_history_for_slot_manager
+from ...utils import messages_to_history, dicts_to_messages, filter_history_conversation_only
 from ..state import BookingSubState
 from ..booking_state_updater import try_update_booking_state_from_reply
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
@@ -341,7 +341,7 @@ def _find_and_offer_slots(
     # Получаем сообщение пользователя и историю
     # Фильтруем историю: оставляем только переписку (user и assistant), без tool messages
     messages = state.get("messages", [])
-    history = filter_history_for_slot_manager(messages) if messages else []
+    history = filter_history_conversation_only(messages) if messages else []
     chat_id = state.get("chat_id")
     
     try:

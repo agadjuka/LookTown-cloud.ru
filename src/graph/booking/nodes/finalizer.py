@@ -3,7 +3,7 @@
 """
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history, dicts_to_messages
+from ...utils import messages_to_history, dicts_to_messages, filter_history_conversation_only
 from ..state import BookingSubState
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
@@ -67,9 +67,9 @@ def finalizer_node(state: ConversationState) -> ConversationState:
     
     # Получаем сообщение пользователя и историю
     user_message = state.get("message", "")
-    # Преобразуем messages в history для обратной совместимости
+    # Фильтруем историю: оставляем только переписку (user и assistant), без tool messages
     messages = state.get("messages", [])
-    history = messages_to_history(messages) if messages else []
+    history = filter_history_conversation_only(messages) if messages else []
     chat_id = state.get("chat_id")
     
     # Форматируем дату и время для промпта

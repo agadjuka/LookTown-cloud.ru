@@ -108,12 +108,14 @@ def filter_history_for_stage_detector(history: List[Dict[str, Any]], max_message
     return filtered_history
 
 
-def filter_history_for_slot_manager(messages: List[BaseMessage | Dict[str, Any]]) -> List[Dict[str, Any]]:
+def filter_history_conversation_only(messages: List[BaseMessage | Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Фильтрует историю для slot_manager:
+    Фильтрует историю, оставляя только переписку (без результатов инструментов):
     - Оставляет только сообщения пользователя (user) и ассистента (assistant)
     - Удаляет все tool messages (результаты инструментов)
     - Удаляет system messages
+    
+    Используется в узлах, которым не нужны результаты инструментов из предыдущих этапов.
     
     Args:
         messages: Список BaseMessage объектов или словарей
