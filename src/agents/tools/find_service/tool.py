@@ -164,35 +164,38 @@ class FindService(BaseModel):
             
             # Если указано имя мастера, используем логику поиска мастера по услуге
             if self.master_name:
-                result = asyncio.run(
-                    find_master_by_service_logic(
+                async def process_master_search():
+                    result = await find_master_by_service_logic(
                         yclients_service=yclients_service,
                         master_name=self.master_name,
                         service_name=self.service_name
                     )
-                )
+                    
+                    if not result.get('success'):
+                        return None, None, result.get('error', 'Неизвестная ошибка')
+                    
+                    master = result.get('master', {})
+                    master_name_result = master.get('name', '')
+                    services = result.get('services', [])
+                    
+                    if not services:
+                        return master_name_result, None, f"Мастер {master_name_result} найден, но у него нет доступных услуг."
+                    
+                    # Ограничиваем до 15 услуг
+                    services = services[:15]
+                    
+                    # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
+                    services = await enrich_services_with_categories(yclients_service, services)
+                    
+                    return master_name_result, services, None
                 
-                if not result.get('success'):
-                    error = result.get('error', 'Неизвестная ошибка')
-                    return f"Ошибка: {error}"
+                master_name_result, services, error = asyncio.run(process_master_search())
                 
-                master = result.get('master', {})
-                master_name_result = master.get('name', '')
-                master_id = master.get('id', '')
-                position_title = master.get('position_title', '')
-                
-                services = result.get('services', [])
+                if error:
+                    return error
                 
                 if not services:
                     return f"Мастер {master_name_result} найден, но у него нет доступных услуг."
-                
-                # Ограничиваем до 15 услуг
-                services = services[:15]
-                
-                # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
-                services = asyncio.run(
-                    enrich_services_with_categories(yclients_service, services)
-                )
                 
                 # Форматируем результат как нумерованный список (максимум 15 самых релевантных)
                 result_lines = []
@@ -217,29 +220,35 @@ class FindService(BaseModel):
                 return "\n".join(result_lines)
             
             # Обычный поиск услуг
-            result = asyncio.run(
-                find_service_logic(
+            async def process_service_search():
+                result = await find_service_logic(
                     yclients_service=yclients_service,
                     service_name=self.service_name
                 )
-            )
+                
+                if not result.get('success'):
+                    return None, result.get('error', 'Неизвестная ошибка')
+                
+                services = result.get('services', [])
+                
+                if not services:
+                    return None, f"Услуги с названием '{self.service_name}' не найдены"
+                
+                # Ограничиваем до 15 услуг
+                services = services[:15]
+                
+                # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
+                services = await enrich_services_with_categories(yclients_service, services)
+                
+                return services, None
             
-            if not result.get('success'):
-                error = result.get('error', 'Неизвестная ошибка')
-                return f"Ошибка: {error}"
+            services, error = asyncio.run(process_service_search())
             
-            services = result.get('services', [])
+            if error:
+                return f"Ошибка: {error}" if not error.startswith("Услуги") else error
             
             if not services:
                 return f"Услуги с названием '{self.service_name}' не найдены"
-            
-            # Ограничиваем до 15 услуг
-            services = services[:15]
-            
-            # Обогащаем услуги информацией о категориях (для услуг с одинаковыми названиями)
-            services = asyncio.run(
-                enrich_services_with_categories(yclients_service, services)
-            )
             
             # Форматируем результат
             result_lines = []

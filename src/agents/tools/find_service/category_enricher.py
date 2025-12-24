@@ -149,7 +149,8 @@ async def get_category_title(
 
 async def enrich_services_with_categories(
     yclients_service: YclientsService,
-    services: List[Dict]
+    services: List[Dict],
+    service_details_cache: Optional[Dict[int, Any]] = None
 ) -> List[Dict]:
     """
     Обогащает услуги информацией о категориях для услуг с одинаковыми названиями
@@ -157,6 +158,7 @@ async def enrich_services_with_categories(
     Args:
         yclients_service: Сервис для работы с API
         services: Список услуг с полями 'id', 'title', 'price'
+        service_details_cache: Опциональный кэш уже полученных деталей услуг (service_id -> ServiceDetails)
         
     Returns:
         Список услуг с добавленным полем 'category_title' (если нужно)
@@ -191,20 +193,44 @@ async def enrich_services_with_categories(
                 duplicate_service_ids.append(service_id)
                 service_id_to_service[service_id] = service
     
-    # Параллельно получаем детали всех услуг с дублирующимися названиями
-    tasks = [
-        yclients_service.get_service_details(service_id)
-        for service_id in duplicate_service_ids
-    ]
+    # Используем кэш, если он передан, иначе создаем пустой
+    if service_details_cache is None:
+        service_details_cache = {}
     
-    service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
+    # Определяем, какие услуги нужно загрузить (которых нет в кэше)
+    missing_service_ids = [sid for sid in duplicate_service_ids if sid not in service_details_cache]
+    
+    # Параллельно получаем детали только недостающих услуг
+    if missing_service_ids:
+        tasks = [
+            yclients_service.get_service_details(service_id)
+            for service_id in missing_service_ids
+        ]
+        missing_service_details = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Добавляем в кэш
+        for idx, service_details in enumerate(missing_service_details):
+            if isinstance(service_details, Exception):
+                continue
+            if idx < len(missing_service_ids):
+                service_id = missing_service_ids[idx]
+                service_details_cache[service_id] = service_details
+    
+    # Теперь используем кэш для получения деталей
+    service_details_list = []
+    for service_id in duplicate_service_ids:
+        service_details = service_details_cache.get(service_id)
+        if service_details:
+            service_details_list.append(service_details)
+        else:
+            service_details_list.append(None)
     
     # Собираем уникальные category_id
     category_ids_to_fetch = set()
     service_id_to_category_id = {}
     
     for idx, service_details in enumerate(service_details_list):
-        if isinstance(service_details, Exception):
+        if service_details is None or isinstance(service_details, Exception):
             continue
         
         if idx >= len(duplicate_service_ids):

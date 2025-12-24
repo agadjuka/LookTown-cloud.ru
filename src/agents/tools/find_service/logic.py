@@ -242,12 +242,6 @@ async def find_master_by_service_logic(
             }
         
         # 3. Фильтруем кандидатов по максимальной релевантности имени
-        if not master_matches:
-            return {
-                "success": False,
-                "error": f"Мастер с именем '{master_name}' не найден"
-            }
-        
         # Находим максимальную релевантность
         max_relevance = max(relevance for _, relevance in master_matches)
         
@@ -256,10 +250,12 @@ async def find_master_by_service_logic(
         
         # Переменная для сохранения найденных услуг (если уже найдены при выборе мастера)
         pre_found_services = None
+        # Кэш для сохранения уже полученных деталей услуг: service_id -> ServiceDetails
+        service_details_cache = {}
         
         # Если только один кандидат с максимальной релевантностью
         if len(top_candidates) == 1:
-            found_master, _ = top_candidates[0]
+            found_master = top_candidates[0][0]
         else:
             # 4. Если несколько кандидатов с максимальной релевантностью, проверяем их услуги
             # Для каждого мастера получаем услуги и ищем релевантные
@@ -267,8 +263,11 @@ async def find_master_by_service_logic(
             best_services_count = 0
             best_services = []
             
+            # Собираем все service_id для параллельной загрузки
+            all_service_ids = []
+            master_service_ids_map = {}  # master_id -> [service_ids]
+            
             for candidate_master, _ in top_candidates:
-                # Получаем услуги мастера
                 services_links = candidate_master.get("services_links", [])
                 if not services_links:
                     continue
@@ -277,23 +276,43 @@ async def find_master_by_service_logic(
                 if not service_ids:
                     continue
                 
-                # Получаем детали услуг
+                master_id = candidate_master.get("id")
+                master_service_ids_map[master_id] = service_ids
+                all_service_ids.extend(service_ids)
+            
+            # Параллельно загружаем детали всех услуг всех кандидатов одним запросом
+            if all_service_ids:
+                # Убираем дубликаты
+                unique_service_ids = list(set(all_service_ids))
                 tasks = [
                     yclients_service.get_service_details(service_id)
-                    for service_id in service_ids
+                    for service_id in unique_service_ids
                 ]
                 service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
                 
-                # Формируем список услуг
-                candidate_services_list = []
+                # Сохраняем в кэш
                 for idx, service_details in enumerate(service_details_list):
                     if isinstance(service_details, Exception):
                         continue
-                    
-                    if idx >= len(service_ids):
+                    if idx < len(unique_service_ids):
+                        service_id = unique_service_ids[idx]
+                        service_details_cache[service_id] = service_details
+            
+            # Теперь проверяем каждого кандидата, используя кэш
+            for candidate_master, _ in top_candidates:
+                master_id = candidate_master.get("id")
+                service_ids = master_service_ids_map.get(master_id, [])
+                
+                if not service_ids:
+                    continue
+                
+                # Формируем список услуг из кэша
+                candidate_services_list = []
+                for service_id in service_ids:
+                    service_details = service_details_cache.get(service_id)
+                    if not service_details:
                         continue
                     
-                    service_id = service_ids[idx]
                     service_title = service_details.get_title()
                     if service_title == "Лист ожидания":
                         continue
@@ -368,7 +387,7 @@ async def find_master_by_service_logic(
                     "error": f"У мастера {master_name_result} нет доступных услуг"
                 }
             
-            # 6. Параллельно получаем детали всех услуг
+            # 6. Получаем детали услуг, используя кэш или загружая недостающие
             service_ids = [link.get("service_id") for link in services_links if link.get("service_id")]
             
             if not service_ids:
@@ -377,23 +396,32 @@ async def find_master_by_service_logic(
                     "error": f"Не удалось получить список услуг мастера {master_name_result}"
                 }
             
-            tasks = [
-                yclients_service.get_service_details(service_id)
-                for service_id in service_ids
-            ]
+            # Определяем, какие услуги нужно загрузить (которых нет в кэше)
+            missing_service_ids = [sid for sid in service_ids if sid not in service_details_cache]
             
-            service_details_list = await asyncio.gather(*tasks, return_exceptions=True)
+            # Загружаем только недостающие услуги
+            if missing_service_ids:
+                tasks = [
+                    yclients_service.get_service_details(service_id)
+                    for service_id in missing_service_ids
+                ]
+                missing_service_details = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Добавляем в кэш
+                for idx, service_details in enumerate(missing_service_details):
+                    if isinstance(service_details, Exception):
+                        continue
+                    if idx < len(missing_service_ids):
+                        service_id = missing_service_ids[idx]
+                        service_details_cache[service_id] = service_details
             
-            # 7. Формируем список услуг для умного поиска
+            # 7. Формируем список услуг для умного поиска из кэша
             services_list = []
-            for idx, service_details in enumerate(service_details_list):
-                if isinstance(service_details, Exception):
+            for service_id in service_ids:
+                service_details = service_details_cache.get(service_id)
+                if not service_details:
                     continue
                 
-                if idx >= len(service_ids):
-                    continue
-                
-                service_id = service_ids[idx]
                 service_title = service_details.get_title()
                 if service_title == "Лист ожидания":
                     continue
