@@ -177,14 +177,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message_text = convert_bold_markdown_to_html(user_message_text)
     # Добавляем приветствие для первого сообщения (если нужно)
     user_message_text = add_greeting_if_needed(user_message_text, is_first_message)
-    # Удаляем ID в скобках из сообщения (после всех преобразований)
-    text_before_clean = user_message_text
-    try:
-        user_message_text = remove_id_brackets_from_text(user_message_text)
-        if text_before_clean != user_message_text:
-            logger.debug(f"ID удалены из сообщения. Длина до: {len(text_before_clean)}, после: {len(user_message_text)}")
-    except Exception as e:
-        logger.error(f"Ошибка при удалении ID из сообщения: {e}", exc_info=True)
+    # Удаляем ID в скобках из сообщения (дополнительная очистка на случай, если что-то пропустили)
+    user_message_text = remove_id_brackets_from_text(user_message_text)
     await update.message.reply_text(user_message_text, parse_mode=ParseMode.HTML)
 
     # Отправляем ответ AI в админ-панель (если настроено)

@@ -70,14 +70,14 @@ INSTRUCTIONS:
 1.3 If the client wants to book with a specific master (mentions name and service) — use `FindService` with the `master_name` field specified. If only the name — first clarify the service.
 
 2.1 If the client ask about a service (specific details), use `ViewService`.
-2.2 If the client asks about a masters (What types of masters are there, their competence, etc), use `Masters`.
+2.2 If the client asks any about a masters (What types of masters are there, their competence, recommend masterts etc), you shoud send master`s review from tool `Masters`.
 
 2 If the client chose a specific service (including if you received a list of services from the tool, and only one clearly fits) and did not ask questions about it, return ONLY JSON with the selected service ID in the format: {{"service_id": 12345678}} (the only situation when you can send the service ID)
 
 IMPORTANT:
 - Do not write the ID to the client
 - Keep the list numbered exactly as you receive it from the tool.
-- If the client decided to change the service or master - start over (excluding greeting) according to instructions - call tools again.
+- If the client decided to change the service or master - start over (excluding greeting) according to instructions - call tools again.к натал
 
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
 """

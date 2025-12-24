@@ -77,7 +77,7 @@ CURRENT DATA:
 - Booking date and time: {slot_time_formatted}
 
 INSTRUCTION:
-You need to get the client's name and phone number.
+You ONLY need to get the client's name and phone number. NEVER CHECK AVAIBLITY, SERVISES OR OTHER DETAILS
 
 Approximate phrasing: Хорошо, пожалуйста, напишите ваше имя и номер телефона. (you can change depending on the situation)
 

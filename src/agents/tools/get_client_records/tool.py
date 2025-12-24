@@ -3,6 +3,7 @@
 """
 import asyncio
 from datetime import datetime
+import pytz
 from pydantic import BaseModel, Field
 from yandex_cloud_ml_sdk._threads.thread import Thread
 
@@ -90,9 +91,10 @@ def _format_datetime_russian(datetime_str: str) -> str:
 def _is_future_record(datetime_str: str) -> bool:
     """
     Проверяет, является ли запись будущей (дата и время еще не прошли)
+    Использует московское время для сравнения, так как записи приходят в московском часовом поясе
     
     Args:
-        datetime_str: Строка с датой и временем
+        datetime_str: Строка с датой и временем (например: "2025-11-12T14:30:00+03:00")
         
     Returns:
         True если запись в будущем, False если в прошлом
@@ -101,44 +103,70 @@ def _is_future_record(datetime_str: str) -> bool:
         return False
     
     try:
-        # Убираем часовой пояс для сравнения
-        datetime_str_clean = datetime_str.split('+')[0] if '+' in datetime_str else datetime_str
-        datetime_str_clean = datetime_str_clean.split('Z')[0] if 'Z' in datetime_str_clean else datetime_str_clean
-        # Убираем часовой пояс в формате -03:00
-        if '-' in datetime_str_clean and len(datetime_str_clean.split('-')) > 3:
-            # Если есть более 3 частей после разбиения по '-', значит есть часовой пояс
-            parts = datetime_str_clean.rsplit('-', 1)
-            if ':' in parts[-1] and len(parts[-1].split(':')) == 2:
-                # Последняя часть похожа на часовой пояс (например, "03:00")
-                datetime_str_clean = parts[0]
+        # Получаем московский часовой пояс
+        moscow_tz = pytz.timezone('Europe/Moscow')
         
-        # Парсим дату и время
-        if 'T' in datetime_str_clean:
-            date_part, time_part = datetime_str_clean.split('T', 1)
-        elif ' ' in datetime_str_clean:
-            date_part, time_part = datetime_str_clean.split(' ', 1)
-        else:
-            date_part = datetime_str_clean
-            time_part = "00:00:00"
+        # Пытаемся распарсить datetime с учетом часового пояса
+        record_datetime = None
         
-        # Формируем строку для парсинга
-        if time_part:
-            # Убираем секунды и часовой пояс из времени
-            time_parts = time_part.split(':')
-            time_clean = f"{time_parts[0]}:{time_parts[1]}" if len(time_parts) >= 2 else "00:00"
-            parse_str = f"{date_part} {time_clean}"
-        else:
-            parse_str = f"{date_part} 00:00"
-        
-        # Парсим datetime
+        # Пробуем распарсить с часовым поясом
         try:
-            record_datetime = datetime.strptime(parse_str, "%Y-%m-%d %H:%M")
-        except ValueError:
-            # Пробуем без времени
-            record_datetime = datetime.strptime(date_part, "%Y-%m-%d")
+            # Если есть часовой пояс в строке, используем fromisoformat
+            if '+' in datetime_str or datetime_str.endswith('Z'):
+                if datetime_str.endswith('Z'):
+                    datetime_str = datetime_str[:-1] + '+00:00'
+                record_datetime_parsed = datetime.fromisoformat(datetime_str)
+                # Если datetime уже имеет timezone info, конвертируем в московское время для сравнения
+                if record_datetime_parsed.tzinfo is not None:
+                    # Конвертируем в московское время
+                    record_datetime = record_datetime_parsed.astimezone(moscow_tz)
+                else:
+                    # Если timezone info нет, локализуем как московское время
+                    record_datetime = moscow_tz.localize(record_datetime_parsed)
+            else:
+                # Если часового пояса нет, предполагаем московское время
+                # Убираем возможные артефакты
+                datetime_str_clean = datetime_str.split('+')[0] if '+' in datetime_str else datetime_str
+                datetime_str_clean = datetime_str_clean.split('Z')[0] if 'Z' in datetime_str_clean else datetime_str_clean
+                
+                # Парсим дату и время
+                if 'T' in datetime_str_clean:
+                    date_part, time_part = datetime_str_clean.split('T', 1)
+                elif ' ' in datetime_str_clean:
+                    date_part, time_part = datetime_str_clean.split(' ', 1)
+                else:
+                    date_part = datetime_str_clean
+                    time_part = "00:00:00"
+                
+                # Формируем строку для парсинга
+                if time_part:
+                    # Убираем секунды из времени
+                    time_parts = time_part.split(':')
+                    time_clean = f"{time_parts[0]}:{time_parts[1]}" if len(time_parts) >= 2 else "00:00"
+                    parse_str = f"{date_part} {time_clean}"
+                else:
+                    parse_str = f"{date_part} 00:00"
+                
+                # Парсим datetime без часового пояса
+                try:
+                    record_datetime_naive = datetime.strptime(parse_str, "%Y-%m-%d %H:%M")
+                except ValueError:
+                    # Пробуем без времени
+                    record_datetime_naive = datetime.strptime(date_part, "%Y-%m-%d")
+                
+                # Локализуем в московский часовой пояс
+                record_datetime = moscow_tz.localize(record_datetime_naive)
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Ошибка при парсинге даты {datetime_str}: {e}")
+            return False
+        
+        if record_datetime is None:
+            return False
+        
+        # Получаем текущее московское время
+        current_datetime = datetime.now(moscow_tz)
         
         # Сравниваем с текущим временем
-        current_datetime = datetime.now()
         return record_datetime > current_datetime
         
     except Exception as e:
