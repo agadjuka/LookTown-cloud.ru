@@ -76,11 +76,14 @@ class ViewService(BaseModel):
             
             price_min = service.get('price_min')
             price_max = service.get('price_max')
-            if price_min or price_max:
+            if price_min is not None or price_max is not None:
                 if price_min == price_max:
-                    result_lines.append(f"Цена: {price_min} руб.")
+                    price_value = int(price_min) if price_min is not None else price_min
+                    result_lines.append(f"Цена: {price_value} руб.")
                 else:
-                    result_lines.append(f"Цена: {price_min or 'от'} - {price_max or 'до'} руб.")
+                    price_min_value = int(price_min) if price_min is not None else 'от'
+                    price_max_value = int(price_max) if price_max is not None else 'до'
+                    result_lines.append(f"Цена: {price_min_value} - {price_max_value} руб.")
             
             comment = service.get('comment')
             if comment:
@@ -88,7 +91,7 @@ class ViewService(BaseModel):
             
             staff = service.get('staff', [])
             if staff:
-                result_lines.append(f"\nМастера ({len(staff)}):")
+                result_lines.append(f"\nМастера:")
                 for master in staff:
                     master_name = master.get('name', 'Неизвестно')
                     master_id = master.get('id', 'Не указан')
@@ -96,7 +99,7 @@ class ViewService(BaseModel):
             else:
                 result_lines.append("\nМастера не найдены")
             
-            result_lines.append("\n((Отправь клиенту этот текст, сохраняй форматирование, не пиши ничего от себя))")
+            result_lines.append("\n((Отправь клиенту этот текст, сохраняй форматирование, не пиши ничего от себя, если ты не нашёл ответ на вопрос клиента, позови менеджера))")
             
             return "\n".join(result_lines)
             

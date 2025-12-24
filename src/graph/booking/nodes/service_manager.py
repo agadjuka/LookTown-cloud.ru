@@ -78,9 +78,8 @@ IMPORTANT:
 - Do not write the ID to the client
 - Keep the list numbered exactly as you receive it from the tool.
 - If the client decided to change the service or master - start over (excluding greeting) according to instructions - call tools again.
-
+- NEVER USE YOUR KNOWLEDGE, ONLY USE INFO FROM TOOLS.
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
-.
 """
     
     return prompt
