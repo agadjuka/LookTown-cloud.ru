@@ -14,6 +14,10 @@ class Master(BaseModel):
     """Модель мастера из ответа Yclients"""
     id: int
     name: Optional[str] = None
+    seance_length: Optional[int] = Field(default=None, description="Продолжительность сеанса для этого мастера в секундах")
+    
+    class Config:
+        extra = "allow"  # Разрешаем дополнительные поля из API
 
 
 class ServiceDetails(BaseModel):

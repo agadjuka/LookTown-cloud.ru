@@ -3,6 +3,7 @@
 Адаптировано из Cloud Function
 """
 import asyncio
+import json
 from typing import Optional, Tuple, List
 from ..common.yclients_service import YclientsService, Master
 from ..common.phone_utils import normalize_phone
@@ -29,6 +30,54 @@ def _normalize_time(time_str: str) -> str:
     minute = parts[1]
     
     return f"{hour}:{minute}"
+
+
+def _normalize_datetime_for_api(datetime_str: str) -> str:
+    """
+    Нормализует datetime к формату, ожидаемому API: YYYY-MM-DD HH:MM:SS
+    Добавляет секунды, если их нет
+    
+    Args:
+        datetime_str: Дата и время в формате YYYY-MM-DD HH:MM или YYYY-MM-DD HH:MM:SS
+        
+    Returns:
+        str: Дата и время в формате YYYY-MM-DD HH:MM:SS
+    """
+    datetime_str = datetime_str.strip()
+    
+    # Поддерживаем форматы: "2025-11-08 14:30" или "2025-11-08T14:30" или "2025-11-08 14:30:00"
+    if 'T' in datetime_str:
+        parts = datetime_str.split('T', 1)
+        date = parts[0]
+        time = parts[1] if len(parts) > 1 else ""
+    elif ' ' in datetime_str:
+        parts = datetime_str.split(' ', 1)
+        date = parts[0]
+        time = parts[1] if len(parts) > 1 else ""
+    else:
+        # Если формат не распознан, возвращаем как есть
+        return datetime_str
+    
+    # Обрабатываем время
+    if time:
+        # Убираем часовой пояс, если есть
+        if '+' in time:
+            time = time.split('+')[0]
+        elif 'Z' in time:
+            time = time.split('Z')[0]
+        
+        # Проверяем, есть ли секунды
+        time_parts = time.split(':')
+        if len(time_parts) == 2:
+            # Нет секунд, добавляем :00
+            return f"{date} {time}:00"
+        elif len(time_parts) >= 3:
+            # Есть секунды, возвращаем как есть (но убираем миллисекунды, если есть)
+            seconds = time_parts[2].split('.')[0]  # Убираем миллисекунды
+            return f"{date} {time_parts[0]}:{time_parts[1]}:{seconds}"
+    
+    # Если время не указано, возвращаем только дату с временем 00:00:00
+    return f"{date} 00:00:00"
 
 
 def _parse_datetime(datetime_str: str) -> Tuple[str, str]:
@@ -153,7 +202,7 @@ async def create_booking_logic(
         service_details = await yclients_service.get_service_details(service_id)
         
         service_title = service_details.get_title()
-        seance_length = service_details.duration  # API уже возвращает в секундах
+        default_seance_length = service_details.duration  # Общая продолжительность услуги (fallback)
         
         # Проверяем, что это не "Лист ожидания"
         if service_title == "Лист ожидания":
@@ -210,13 +259,29 @@ async def create_booking_logic(
         
         master_id, master_name_result = master_info
         
-        # 4. Создаем запись
+        # 4. Находим выбранного мастера в списке и берем его seance_length
+        selected_master = None
+        for master in all_masters:
+            if master.id == master_id:
+                selected_master = master
+                break
+        
+        # Берем seance_length из конкретного мастера, если есть, иначе используем общую продолжительность
+        if selected_master and selected_master.seance_length is not None:
+            seance_length = selected_master.seance_length
+        else:
+            seance_length = default_seance_length
+        
+        # 5. Нормализуем datetime для API (добавляем секунды, если их нет)
+        normalized_datetime = _normalize_datetime_for_api(datetime)
+        
+        # 6. Создаем запись
         booking_response = await yclients_service.create_booking(
             staff_id=master_id,
             service_id=service_id,
             client_name=client_name,
             client_phone=normalized_phone,  # Используем нормализованный номер
-            datetime=datetime,
+            datetime=normalized_datetime,
             seance_length=seance_length
         )
         
@@ -228,7 +293,7 @@ async def create_booking_logic(
                 "service_title": service_title
             }
         
-        # 5. Извлекаем цену и другие данные из ответа API
+        # 6. Извлекаем цену и другие данные из ответа API
         price = None
         response_data = booking_response.get("data", {})
         
@@ -244,7 +309,7 @@ async def create_booking_logic(
                     if isinstance(first_service, dict):
                         price = first_service.get("cost") or first_service.get("price")
         
-        # 6. Форматируем дату и время в удобный формат
+        # 8. Форматируем дату и время в удобный формат
         def format_datetime_russian(datetime_str: str) -> str:
             """Форматирует дату и время в русский формат: '13 ноября 2025, 12:00'"""
             try:
@@ -315,9 +380,9 @@ async def create_booking_logic(
         
         formatted_datetime = format_datetime_russian(datetime)
         
-        # 7. Формируем успешный ответ с полной информацией
+        # 9. Формируем успешный ответ с полной информацией
         message_parts = [
-            f"{client_name}, успешно записано на услугу",
+            f"{client_name}, Вы записаны на услугу:",
             f"{service_title}",
             f"{formatted_datetime}",
             f"к мастеру {master_name_result}"
@@ -326,7 +391,8 @@ async def create_booking_logic(
         if price is not None:
             message_parts.append(f"Цена: {price} руб.")
         
-        message = ". ".join(message_parts) + "."
+        message = ". ".join(message_parts) + " Будем вас ждать!"
+        message += "\n\n((Отправь клиент именно этот текст))"
         
         result = {
             "success": True,

@@ -89,8 +89,7 @@ def finalizer_node(state: ConversationState) -> ConversationState:
     system_prompt = f"""You are an AI administrator of the LookTown salon. Currently at the finalization stage (Step 4).
 
 INSTRUCTION:
-Step 4: Finalize the booking.
-Data collected. YOU MUST CALL the `create_booking` tool with the available data.
+ YOU MUST CALL the `create_booking` tool with the available data.
 
 DATA FOR create_booking TOOL (use EXACTLY these values):
 - service_id: {service_id} (required, number)
@@ -101,8 +100,7 @@ DATA FOR create_booking TOOL (use EXACTLY these values):
 
 IMPORTANT:
 - MANDATORY call the create_booking tool RIGHT NOW with this data.
-- After successful tool call, confirm the booking to the client:
-  "{confirmation_template}"
+
   (Decline the master's name if possible).
 
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager.
