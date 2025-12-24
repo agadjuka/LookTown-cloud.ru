@@ -517,7 +517,7 @@ PARAMETERS FOR FindSlots:
 {params_instructions}
 1 If the client specified preferences (e.g., "вечером", "завтра", "после 18:00") — pass this to the `time_period` or `date` argument of the `FindSlots` tool.
 2 If there are no preferences — call `FindSlots` without strict restrictions (for the nearest days) to offer options.
-3 If the client chose a slot (including if they named a master who has only one available slot, return ONLY JSON with the service time in the format:  {{"slot_time": "YYYY-MM-DD HH:MM"}}  NEVER SEND {"service_id": }
+3 If the client chose a slot (including if they named a master who has only one available slot, return ONLY JSON with the service time in the format:  {{"slot_time": "YYYY-MM-DD HH:MM"}}  NEVER SEND {{"service_id": }}
 If there are no available slots, tell the client about it, suggest selecting other slots or time. NEVER MAKE UP AVAILABLE SLOTS, TAKE THEM ONLY FROM THE `FindSlots` TOOL.
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
  (if you already called the manager, don't call it again, continue the conversation).
