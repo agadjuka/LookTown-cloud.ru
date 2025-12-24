@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
 from ...utils import messages_to_history, dicts_to_messages
 from ..state import BookingSubState
-from ..booking_state_updater import try_update_booking_state_from_reply
+from ..booking_state_updater import try_update_booking_state_from_reply, merge_booking_state
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
 from ....services.responses_api.tools_registry import ResponsesToolsRegistry
 from ....services.responses_api.config import ResponsesAPIConfig
@@ -14,6 +14,8 @@ from ....services.logger_service import logger
 # Импортируем инструменты
 from ....agents.tools.get_categories.tool import GetCategories
 from ....agents.tools.find_service.tool import FindService
+from ....agents.tools.view_service.tool import ViewService
+from ....agents.tools.masters.tool import Masters
 from ....agents.tools.call_manager import CallManager
 
 
@@ -67,10 +69,12 @@ INSTRUCTIONS:
 1.2 If the client said which service they want to book, use `FindService`.
 1.3 If the client wants to book with a specific master (mentions name and service) — use `FindService` with the `master_name` field specified. If only the name — first clarify the service.
 
+2.1 If the client ask about a service (specific details), use `ViewService`.
+2.2 If the client asks about a masters (What types of masters are there, their competence, etc), use `Masters`.
+
 2 If the client chose a specific service (including if you received a list of services from the tool, and only one clearly fits) and did not ask questions about it, return ONLY JSON with the selected service ID in the format: {{"service_id": 12345678}} (the only situation when you can send the service ID)
 
 IMPORTANT:
-- Do not make up services and prices. Take only from tools. 
 - Do not write the ID to the client
 - Keep the list numbered exactly as you receive it from the tool.
 - If the client decided to change the service or master - start over (excluding greeting) according to instructions - call tools again.
@@ -101,13 +105,8 @@ def service_manager_node(state: ConversationState) -> ConversationState:
     extracted_info = state.get("extracted_info") or {}
     booking_state: Dict[str, Any] = extracted_info.get("booking", {})
     
-    # Проверяем, есть ли уже service_id
-    service_id = booking_state.get("service_id")
-    if service_id is not None:
-        logger.info(f"Услуга уже выбрана (service_id={service_id}), пропускаем service_manager")
-        return {}
-    
     # Получаем данные для контекста
+    service_id = booking_state.get("service_id")
     service_name = booking_state.get("service_name")
     master_id = booking_state.get("master_id")
     master_name = booking_state.get("master_name")
@@ -134,6 +133,8 @@ def service_manager_node(state: ConversationState) -> ConversationState:
         # Регистрируем необходимые инструменты
         tools_registry.register_tool(GetCategories)
         tools_registry.register_tool(FindService)
+        tools_registry.register_tool(ViewService)
+        tools_registry.register_tool(Masters)
         tools_registry.register_tool(CallManager)
         
         # Создаем orchestrator
@@ -177,9 +178,15 @@ def service_manager_node(state: ConversationState) -> ConversationState:
             extracted_info=extracted_info
         )
         
-        # Если JSON найден и состояние обновлено - не отправляем сообщение клиенту
+        # ВАЖНО: Сбрасываем флаг service_details_needed после ответа, чтобы не зациклиться
         if updated_extracted_info:
-            logger.info("JSON найден в ответе service_manager, состояние обновлено, пропускаем отправку сообщения клиенту")
+            # Если JSON был найден, обновляем состояние и сбрасываем флаг
+            updated_booking_state = merge_booking_state(
+                updated_extracted_info.get("booking", booking_state),
+                {"service_details_needed": False}
+            )
+            updated_extracted_info["booking"] = updated_booking_state
+            logger.info("JSON найден в ответе service_manager, состояние обновлено, флаг service_details_needed сброшен")
             return {
                 "messages": new_messages,
                 "answer": "",  # Пустой answer - процесс продолжается автоматически
@@ -187,22 +194,34 @@ def service_manager_node(state: ConversationState) -> ConversationState:
                 "used_tools": [tc.get("name") for tc in tool_calls] if tool_calls else [],
                 "tool_results": tool_calls if tool_calls else []
             }
+        else:
+            # Если JSON не найден, все равно сбрасываем флаг service_details_needed
+            updated_booking_state = merge_booking_state(booking_state, {"service_details_needed": False})
+            updated_extracted_info = extracted_info.copy()
+            updated_extracted_info["booking"] = updated_booking_state
         
         # Формируем список использованных инструментов
         used_tools = [tc.get("name") for tc in tool_calls] if tool_calls else []
         
         logger.info(f"Service manager ответил: {reply[:100]}...")
         logger.info(f"Использованные инструменты: {used_tools}")
+        logger.info("Флаг service_details_needed сброшен в False")
         
         return {
             "messages": new_messages,  # КРИТИЧНО: Возвращаем все новые сообщения (AIMessage с tool_calls и ToolMessage)
             "answer": reply,
+            "extracted_info": updated_extracted_info,
             "used_tools": used_tools,
             "tool_results": tool_calls if tool_calls else []
         }
         
     except Exception as e:
         logger.error(f"Ошибка в service_manager_node: {e}", exc_info=True)
+        # Даже при ошибке сбрасываем флаг service_details_needed
+        updated_booking_state = merge_booking_state(booking_state, {"service_details_needed": False})
+        updated_extracted_info = extracted_info.copy()
+        updated_extracted_info["booking"] = updated_booking_state
         return {
-            "answer": "Извините, произошла ошибка при выборе услуги. Попробуйте еще раз."
+            "answer": "Извините, произошла ошибка при выборе услуги. Попробуйте еще раз.",
+            "extracted_info": updated_extracted_info
         }

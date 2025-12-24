@@ -25,7 +25,7 @@ class CreateBooking(BaseModel):
     """
     
     service_id: int = Field(
-        description="Service ID. Get from GetServices"
+        description="Service ID. Get from FindService"
     )
     
     client_name: str = Field(

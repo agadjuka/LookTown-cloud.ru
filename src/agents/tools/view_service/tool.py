@@ -24,7 +24,7 @@ class ViewService(BaseModel):
     """
     
     service_id: int = Field(
-        description="Service ID. Get from GetServices"
+        description="Service ID. Get from FindService"
     )
     
     def process(self, thread: Thread) -> str:

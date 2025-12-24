@@ -37,7 +37,12 @@ class Masters(BaseModel):
                 return "Информация о мастерах не найдена"
             
             # Возвращаем полное содержимое JSON в читаемом формате
-            return json.dumps(data, ensure_ascii=False, indent=2)
+            result = json.dumps(data, ensure_ascii=False, indent=2)
+            
+            # Добавляем фразу о мастерах в конец вывода
+            result += "\n\n((Phrasing: Все наши мастера работают под чутким руководством директора и отлично выполняют работу, можете ознакомиться с отзывами мастера: {{ссылка}} ))"
+            
+            return result
             
         except FileNotFoundError as e:
             logger.error(f"Файл с информацией о мастерах не найден: {e}")

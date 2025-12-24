@@ -8,7 +8,6 @@ from ..conversation_state import ConversationState
 from .state import BookingSubState
 from .analyzer import booking_analyzer_node
 from .nodes.service_manager import service_manager_node
-from .nodes.about_service_manager import about_service_manager_node
 from .nodes.slot_manager import slot_manager_node
 from .nodes.contact_collector import contact_collector_node
 from .nodes.finalizer import finalizer_node
@@ -116,7 +115,6 @@ def _create_booking_state_adapter(original_node):
 # Создаем адаптеры для всех узлов
 analyzer_adapter = _create_booking_state_adapter(booking_analyzer_node)
 service_manager_adapter = _create_booking_state_adapter(service_manager_node)
-about_service_manager_adapter = _create_booking_state_adapter(about_service_manager_node)
 slot_manager_adapter = _create_booking_state_adapter(slot_manager_node)
 contact_collector_adapter = _create_booking_state_adapter(contact_collector_node)
 finalizer_adapter = _create_booking_state_adapter(finalizer_node)
@@ -155,7 +153,7 @@ def route_after_slot_manager(state: Dict[str, Any]) -> Literal["contact_collecto
         return END
 
 
-def route_booking(state: Dict[str, Any]) -> Literal["about_service_manager", "service_manager", "slot_manager", "contact_collector", "finalizer", END]:
+def route_booking(state: Dict[str, Any]) -> Literal["service_manager", "slot_manager", "contact_collector", "finalizer", END]:
     """
     Функция роутинга для выбора следующего узла в графе бронирования
     
@@ -166,8 +164,8 @@ def route_booking(state: Dict[str, Any]) -> Literal["about_service_manager", "se
     Логика (строгий порядок проверок):
     1. Если is_finalized -> END (процесс завершен)
     2. Проверяем answer в conversation - если не пустой, завершаем граф (ждем ответа клиента)
-    3. ПРИОРИТЕТ 1 (Консультация): Если service_details_needed = True -> about_service_manager
-    4. ПРИОРИТЕТ 2 (Стандартная воронка): Если service_id is None -> service_manager (ТОЛЬКО ВЫБОР, без консультаций)
+    3. ПРИОРИТЕТ 1 (Консультация): Если service_details_needed = True -> service_manager (всегда, независимо от других полей)
+    4. ПРИОРИТЕТ 2 (Стандартная воронка): Если service_id is None -> service_manager
     5. Если slot_time is None -> slot_manager (поиск слотов)
     6. Если slot_time есть, но slot_time_verified is False/None -> slot_manager (проверка доступности)
     7. Если нет контактов (client_name или client_phone) -> contact_collector
@@ -193,23 +191,17 @@ def route_booking(state: Dict[str, Any]) -> Literal["about_service_manager", "se
         logger.info(f"Answer не пустой ({len(answer)} символов), завершаем граф для отправки сообщения клиенту")
         return END
     
-    # ПРИОРИТЕТ 1 (Консультация): Если клиент хочет узнать детали об услуге — идем в about_service_manager
+    # ПРИОРИТЕТ 1 (Консультация): Если клиент хочет узнать детали об услуге — всегда идем в service_manager
     service_details_needed = booking_state.get("service_details_needed", False)
     if service_details_needed:
-        logger.info("service_details_needed=True, маршрутизируем в about_service_manager (ПРИОРИТЕТ 1)")
-        return "about_service_manager"
+        logger.info("service_details_needed=True, маршрутизируем в service_manager (ПРИОРИТЕТ 1)")
+        return "service_manager"
     
     # Логируем текущее состояние для отладки
     service_id = booking_state.get("service_id")
     logger.debug(f"route_booking: service_id={service_id} (type={type(service_id)}, is None={service_id is None})")
     
-    # ПРИОРИТЕТ 2 (Стандартная воронка): Если нет ID услуги — идем выбирать услугу (ТОЛЬКО ВЫБОР, без консультаций)
-    # Используем явную проверку на None
-    if service_id is None:
-        logger.info(f"service_id отсутствует (значение: {service_id}), маршрутизируем в service_manager")
-        return "service_manager"
-    
-    # 3. Если нет ID услуги — идем выбирать услугу (даже если есть название, ID важнее)
+    # ПРИОРИТЕТ 2 (Стандартная воронка): Если нет ID услуги — идем выбирать услугу
     # Используем явную проверку на None
     if service_id is None:
         logger.info(f"service_id отсутствует (значение: {service_id}), маршрутизируем в service_manager")
@@ -273,7 +265,6 @@ def create_booking_graph(checkpointer):
     # Добавляем узлы
     workflow.add_node("analyzer", analyzer_adapter)
     workflow.add_node("service_manager", service_manager_adapter)
-    workflow.add_node("about_service_manager", about_service_manager_adapter)
     workflow.add_node("slot_manager", slot_manager_adapter)
     workflow.add_node("contact_collector", contact_collector_adapter)
     workflow.add_node("finalizer", finalizer_adapter)
@@ -282,7 +273,6 @@ def create_booking_graph(checkpointer):
     workflow.add_edge(START, "analyzer")
     workflow.add_conditional_edges("analyzer", route_booking)
     workflow.add_conditional_edges("service_manager", route_booking)  # Условный роутинг: если answer пустой - продолжаем, иначе END
-    workflow.add_conditional_edges("about_service_manager", route_booking)  # Условный роутинг: после ответа на вопрос об услуге возвращаемся в router
     workflow.add_conditional_edges("slot_manager", route_after_slot_manager)  # Условный роутинг после slot_manager
     workflow.add_conditional_edges("contact_collector", route_booking)  # Условный роутинг: если answer пустой - продолжаем, иначе END
     workflow.add_edge("finalizer", END)  # Только finalizer завершает граф

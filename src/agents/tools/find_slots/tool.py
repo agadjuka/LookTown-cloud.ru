@@ -25,7 +25,7 @@ class FindSlots(BaseModel):
     """
     
     service_id: int = Field(
-        description="Service ID. Get from GetServices"
+        description="Service ID. Get from FindService"
     )
     
     time_period: Optional[str] = Field(
