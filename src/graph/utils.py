@@ -108,3 +108,38 @@ def filter_history_for_stage_detector(history: List[Dict[str, Any]], max_message
     return filtered_history
 
 
+def filter_history_for_slot_manager(messages: List[BaseMessage | Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Фильтрует историю для slot_manager:
+    - Оставляет только сообщения пользователя (user) и ассистента (assistant)
+    - Удаляет все tool messages (результаты инструментов)
+    - Удаляет system messages
+    
+    Args:
+        messages: Список BaseMessage объектов или словарей
+        
+    Returns:
+        Отфильтрованная история только с перепиской (user и assistant)
+    """
+    if not messages:
+        return []
+    
+    history = []
+    for msg in messages:
+        if isinstance(msg, dict):
+            role = msg.get("role", "user")
+        else:
+            role_map = {"ai": "assistant", "system": "system", "tool": "tool", "human": "user"}
+            role = role_map.get(getattr(msg, "type", "human"), "user")
+        
+        # Оставляем только user и assistant сообщения
+        if role in ("user", "assistant"):
+            if isinstance(msg, dict):
+                msg_dict = {"role": role, "content": msg.get("content", "")}
+            else:
+                msg_dict = {"role": role, "content": getattr(msg, "content", "")}
+            history.append(msg_dict)
+    
+    return history
+
+

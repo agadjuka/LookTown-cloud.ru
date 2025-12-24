@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
 from ...conversation_state import ConversationState
-from ...utils import messages_to_history, dicts_to_messages
+from ...utils import messages_to_history, dicts_to_messages, filter_history_for_slot_manager
 from ..state import BookingSubState
 from ..booking_state_updater import try_update_booking_state_from_reply
 from ....services.responses_api.orchestrator import ResponsesOrchestrator
@@ -339,9 +339,9 @@ def _find_and_offer_slots(
     system_prompt = _build_system_prompt(service_id, master_id, master_name, time_preference)
     
     # Получаем сообщение пользователя и историю
-    # Преобразуем messages в history для обратной совместимости
+    # Фильтруем историю: оставляем только переписку (user и assistant), без tool messages
     messages = state.get("messages", [])
-    history = messages_to_history(messages) if messages else []
+    history = filter_history_for_slot_manager(messages) if messages else []
     chat_id = state.get("chat_id")
     
     try:

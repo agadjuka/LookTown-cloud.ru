@@ -61,11 +61,19 @@ class ResponsesOrchestrator:
         # ВАЖНО: user_message НЕ включаем в new_messages, так как он уже есть в state["messages"]
         history_length = len(messages)
         
-        # Добавляем текущее сообщение пользователя (для работы orchestrator, но не включаем в new_messages)
-        messages.append({
-            "role": "user",
-            "content": user_message
-        })
+        # Добавляем текущее сообщение пользователя только если его еще нет в истории
+        # Проверяем, не является ли последнее сообщение в истории уже текущим сообщением
+        last_message_is_current = (
+            messages and 
+            messages[-1].get("role") == "user" and 
+            messages[-1].get("content") == user_message
+        )
+        
+        if not last_message_is_current:
+            messages.append({
+                "role": "user",
+                "content": user_message
+            })
         
         # Цикл для обработки множественных вызовов инструментов
         max_iterations = 10

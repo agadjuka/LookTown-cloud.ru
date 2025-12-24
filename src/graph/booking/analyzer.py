@@ -103,11 +103,19 @@ If you encounter a system error, don't know the answer to a question, or the cli
                 msg_dict["tool_call_id"] = msg.get("tool_call_id")
             input_messages.append(msg_dict)
     
-    # Добавляем последнее сообщение пользователя
-    input_messages.append({
-        "role": "user",
-        "content": last_user_message
-    })
+    # Добавляем последнее сообщение пользователя только если его еще нет в истории
+    # Проверяем, не является ли последнее сообщение в истории уже текущим сообщением
+    last_message_is_current = (
+        input_messages and 
+        input_messages[-1].get("role") == "user" and 
+        input_messages[-1].get("content") == last_user_message
+    )
+    
+    if not last_message_is_current:
+        input_messages.append({
+            "role": "user",
+            "content": last_user_message
+        })
     
     response_content = None
     try:
