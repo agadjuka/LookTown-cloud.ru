@@ -33,43 +33,133 @@ async def is_first_user_message(chat_id: str) -> bool:
         async with get_postgres_checkpointer() as checkpointer:
             config = {"configurable": {"thread_id": str(telegram_user_id)}}
             
+            logger.info(f"🔍 [GREETING] Получение состояния из checkpointer для thread_id={telegram_user_id}, chat_id={chat_id}")
+            
             # Получаем последнее состояние
             state_snapshot = await checkpointer.aget(config)
             
             if not state_snapshot:
                 # Если состояния нет, значит это первое сообщение
+                logger.info(f"🔍 [GREETING] Состояние не найдено в checkpointer, это первое сообщение (chat_id={chat_id})")
                 return True
             
             # Извлекаем messages из состояния
-            values = state_snapshot.values if hasattr(state_snapshot, 'values') else state_snapshot.get('values', {})
+            # state_snapshot может быть словарем или объектом
+            if isinstance(state_snapshot, dict):
+                values = state_snapshot.get("values", {})
+            else:
+                # Если это объект, проверяем, является ли values атрибутом или методом
+                if hasattr(state_snapshot, 'values'):
+                    values_attr = getattr(state_snapshot, 'values')
+                    # Если values - это метод (callable), вызываем его
+                    if callable(values_attr):
+                        values = values_attr()
+                    else:
+                        values = values_attr
+                else:
+                    # Если нет атрибута values, пробуем получить как словарь
+                    values = getattr(state_snapshot, 'values', {})
+            
+            # Проверяем, что values - это словарь
+            if not isinstance(values, dict):
+                logger.error(f"values не является словарем: {type(values)}, chat_id={chat_id}")
+                return False
+            
             messages = values.get("messages", [])
+            
+            logger.info(f"🔍 [GREETING] Извлечено messages из values, количество: {len(messages) if messages else 0} (chat_id={chat_id})")
             
             if not messages:
                 # Если сообщений нет, значит это первое
+                logger.info(f"🔍 [GREETING] Сообщений нет в истории, это первое сообщение (chat_id={chat_id})")
                 return True
             
             # Подсчитываем сообщения от пользователя
             # В момент проверки в истории уже есть текущее сообщение пользователя
             # Если есть предыдущие сообщения от пользователя, значит это не первое сообщение
             user_messages_count = 0
+            # Также проверяем наличие финальных ответов AI (без tool calls) - если они есть, значит это не первое сообщение
+            final_ai_responses_count = 0
             
-            for msg in messages:
-                # Получаем тип сообщения
-                msg_type = getattr(msg, 'type', None) if hasattr(msg, 'type') else msg.get('type', '')
+            logger.info(f"🔍 [GREETING] Проверка первого сообщения для chat_id={chat_id}, всего сообщений в истории: {len(messages)}")
+            
+            for i, msg in enumerate(messages):
+                # Получаем тип сообщения более надежным способом
+                msg_type = None
+                
+                # Если это объект BaseMessage
+                if hasattr(msg, 'type'):
+                    msg_type = msg.type
+                # Если это словарь
+                elif isinstance(msg, dict):
+                    # Проверяем поле type
+                    msg_type = msg.get('type', '')
+                    # Если type нет, проверяем по классу или role
+                    if not msg_type:
+                        # Пытаемся определить по role
+                        role = msg.get('role', '')
+                        if role == 'user':
+                            msg_type = 'human'
+                        elif role == 'assistant':
+                            msg_type = 'ai'
+                        elif role == 'tool':
+                            msg_type = 'tool'
+                        elif role == 'system':
+                            msg_type = 'system'
+                # Если это строка (не должно быть, но на всякий случай)
+                elif isinstance(msg, str):
+                    continue
+                
+                # Логируем первые несколько сообщений для отладки
+                if i < 5:
+                    content_preview = 'N/A'
+                    if hasattr(msg, 'content'):
+                        content_preview = str(msg.content)[:50]
+                    elif isinstance(msg, dict):
+                        content_preview = str(msg.get('content', ''))[:50]
+                    logger.info(f"🔍 [GREETING] Сообщение [{i}]: type={msg_type}, class={type(msg).__name__}, content_preview={content_preview}")
                 
                 # Проверяем сообщения от пользователя
+                # HumanMessage имеет type='human', но также может быть 'user' в словарях
                 if msg_type in ['human', 'user']:
                     user_messages_count += 1
+                    logger.info(f"🔍 [GREETING] Найдено сообщение от пользователя [{i}]: type={msg_type}")
+                
+                # Проверяем финальные ответы AI (без tool calls)
+                # Если есть финальные ответы AI, значит уже был диалог
+                if msg_type in ['ai', 'assistant']:
+                    # Проверяем, есть ли tool_calls в сообщении
+                    has_tool_calls = False
+                    if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                        has_tool_calls = True
+                    elif isinstance(msg, dict) and msg.get('tool_calls'):
+                        has_tool_calls = True
+                    
+                    # Если нет tool_calls, значит это финальный ответ, который был отправлен клиенту
+                    if not has_tool_calls:
+                        final_ai_responses_count += 1
+                        logger.info(f"🔍 [GREETING] Найден финальный ответ AI [{i}]: type={msg_type}")
+            
+            logger.info(f"🔍 [GREETING] Количество сообщений от пользователя: {user_messages_count}, финальных ответов AI: {final_ai_responses_count} (chat_id={chat_id})")
             
             # Если есть хотя бы одно предыдущее сообщение от пользователя (user_messages_count > 1),
+            # или есть предыдущие финальные ответы AI (final_ai_responses_count > 1, учитывая текущий),
             # значит это не первое сообщение
             # Учитываем, что текущее сообщение пользователя уже в истории,
             # поэтому если user_messages_count > 1, значит есть предыдущие сообщения
             if user_messages_count > 1:
                 # Есть предыдущие сообщения от пользователя - это не первое
+                logger.info(f"🔍 [GREETING] Найдены предыдущие сообщения от пользователя ({user_messages_count} шт), это НЕ первое сообщение (chat_id={chat_id})")
                 return False
             
-            # Если только одно сообщение от пользователя (текущее), значит это первое сообщение
+            # Если есть больше одного финального ответа AI (текущий + предыдущие), значит это не первое
+            if final_ai_responses_count > 1:
+                logger.info(f"🔍 [GREETING] Найдены предыдущие финальные ответы AI ({final_ai_responses_count} шт), это НЕ первое сообщение (chat_id={chat_id})")
+                return False
+            
+            # Если только одно сообщение от пользователя (текущее) и только один финальный ответ AI (текущий),
+            # значит это первое сообщение
+            logger.info(f"🔍 [GREETING] Это первое сообщение пользователя (user_messages_count={user_messages_count}, final_ai_responses={final_ai_responses_count}, chat_id={chat_id})")
             return True
             
     except Exception as e:
@@ -124,7 +214,7 @@ def has_greeting(text: str) -> bool:
     return False
 
 
-async def add_greeting_if_needed(text: str, chat_id: str) -> str:
+async def add_greeting_if_needed(text: str, chat_id: str, is_first_message: bool = None) -> str:
     """
     Добавляет приветствие "Добрый день" в начало текста, если:
     1. Это первое сообщение пользователя
@@ -133,31 +223,47 @@ async def add_greeting_if_needed(text: str, chat_id: str) -> str:
     Args:
         text: Текст сообщения от агента
         chat_id: ID чата в Telegram
+        is_first_message: Флаг первого сообщения (если передан, используется вместо проверки)
         
     Returns:
         Текст с добавленным приветствием (если нужно) или исходный текст
     """
+    logger.info(f"🔍 [GREETING] Вызов add_greeting_if_needed для chat_id={chat_id}, длина текста: {len(text) if text else 0}, is_first_message={is_first_message}")
+    
     if not text or not text.strip():
+        logger.info(f"🔍 [GREETING] Текст пустой, возвращаем как есть (chat_id={chat_id})")
         return text
     
     try:
+        logger.info(f"🔍 [GREETING] Проверка необходимости добавления приветствия для chat_id={chat_id}, длина текста: {len(text)}")
+        
         # Проверяем, является ли это первым сообщением
-        is_first = await is_first_user_message(chat_id)
+        if is_first_message is None:
+            # Если флаг не передан, проверяем через checkpointer
+            is_first = await is_first_user_message(chat_id)
+        else:
+            # Используем переданный флаг
+            is_first = is_first_message
+        logger.info(f"Результат проверки первого сообщения: is_first={is_first} (chat_id={chat_id})")
         
         if not is_first:
             # Не первое сообщение - не добавляем приветствие
+            logger.debug(f"Не первое сообщение, приветствие не добавляется (chat_id={chat_id})")
             return text
         
         # Проверяем, есть ли уже приветствие в тексте
-        if has_greeting(text):
+        has_greeting_result = has_greeting(text)
+        logger.info(f"Проверка наличия приветствия в тексте: has_greeting={has_greeting_result} (chat_id={chat_id})")
+        
+        if has_greeting_result:
             # Приветствие уже есть - не добавляем
-            logger.debug(f"Приветствие уже присутствует в тексте для chat_id={chat_id}")
+            logger.info(f"Приветствие уже присутствует в тексте, не добавляем (chat_id={chat_id})")
             return text
         
         # Добавляем приветствие в начало
-        greeting = "Добрый день"
+        greeting = "Добрый день!"
         result = f"{greeting}\n\n{text}"
-        logger.info(f"Добавлено приветствие для первого сообщения, chat_id={chat_id}")
+        logger.info(f"✅ Добавлено приветствие для первого сообщения, chat_id={chat_id}, длина результата: {len(result)}")
         return result
         
     except Exception as e:

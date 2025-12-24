@@ -20,6 +20,7 @@ from src.services.text_formatter import convert_bold_markdown_to_html
 from src.services.retry_service import RetryService
 from src.services.call_manager_service import CallManagerException
 from src.services.escalation_service import EscalationService
+from src.services.greeting_handler import add_greeting_if_needed
 from src.handlers.voice_utils import extract_message_text
 
 load_dotenv()
@@ -106,8 +107,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"Ошибка при отправке send_chat_action: {e}, продолжаем обработку", chat_id)
     
     agent_response = await send_to_agent(user_message, chat_id)
-    # Ожидаем словарь: {"user_message": str, "manager_alert": Optional[str]}
+    # Ожидаем словарь: {"user_message": str, "manager_alert": Optional[str], "is_first_message": Optional[bool]}
     user_message_text = agent_response.get("user_message") if isinstance(agent_response, dict) else str(agent_response)
+    is_first_message = agent_response.get("is_first_message") if isinstance(agent_response, dict) else None
     
     # Проверяем на эскалацию [CALL_MANAGER] перед отправкой в Telegram
     if user_message_text and user_message_text.strip().startswith('[CALL_MANAGER]'):
@@ -132,6 +134,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message_text = convert_yclients_links_in_text(user_message_text)
     # Заменяем Markdown жирный текст (**текст**) на HTML теги (<b>текст</b>)
     user_message_text = convert_bold_markdown_to_html(user_message_text)
+    # Добавляем приветствие для первого сообщения (если нужно)
+    user_message_text = await add_greeting_if_needed(user_message_text, chat_id, is_first_message)
     await update.message.reply_text(user_message_text, parse_mode=ParseMode.HTML)
 
     # Обработка уведомления CallManager

@@ -149,7 +149,19 @@ class AgentService:
                 answer = final_state.get("answer", "")
                 manager_alert = final_state.get("manager_alert")
                 
-                logger.info(f"Получен ответ от графа, длина: {len(answer)}")
+                # Проверяем, является ли это первым сообщением, используя messages из final_state
+                # Считаем ВСЕ сообщения от пользователя (включая текущее)
+                messages = final_state.get("messages", [])
+                user_messages_count = 0
+                for msg in messages:
+                    msg_type = getattr(msg, 'type', None) if hasattr(msg, 'type') else msg.get('type', '')
+                    if msg_type in ['human', 'user']:
+                        user_messages_count += 1
+                
+                # Если только одно сообщение от пользователя (текущее), значит это первое сообщение
+                is_first_message = user_messages_count == 1
+                
+                logger.info(f"Получен ответ от графа, длина: {len(answer)}, is_first_message={is_first_message}, user_messages_count={user_messages_count}")
                 
                 # Нормализуем даты и время в ответе
                 from .date_normalizer import normalize_dates_in_text
@@ -160,7 +172,7 @@ class AgentService:
                 answer = normalize_times_in_text(answer)
                 answer = convert_yclients_links_in_text(answer)
                 
-                result = {"user_message": answer}
+                result = {"user_message": answer, "is_first_message": is_first_message}
                 if manager_alert:
                     manager_alert = normalize_dates_in_text(manager_alert)
                     manager_alert = normalize_times_in_text(manager_alert)
