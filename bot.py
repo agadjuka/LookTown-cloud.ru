@@ -135,7 +135,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Заменяем Markdown жирный текст (**текст**) на HTML теги (<b>текст</b>)
     user_message_text = convert_bold_markdown_to_html(user_message_text)
     # Добавляем приветствие для первого сообщения (если нужно)
-    user_message_text = await add_greeting_if_needed(user_message_text, chat_id, is_first_message)
+    user_message_text = add_greeting_if_needed(user_message_text, is_first_message)
     await update.message.reply_text(user_message_text, parse_mode=ParseMode.HTML)
 
     # Обработка уведомления CallManager

@@ -168,8 +168,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "manager_alert": escalation_result.get("manager_alert")
         }
     
-    # Удаляем ID в скобках из сообщения
-    user_message_text = remove_id_brackets_from_text(user_message_text)
     # Нормализуем даты и время в ответе
     user_message_text = normalize_dates_in_text(user_message_text)
     user_message_text = normalize_times_in_text(user_message_text)
@@ -178,7 +176,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Заменяем Markdown жирный текст (**текст**) на HTML теги (<b>текст</b>)
     user_message_text = convert_bold_markdown_to_html(user_message_text)
     # Добавляем приветствие для первого сообщения (если нужно)
-    user_message_text = await add_greeting_if_needed(user_message_text, chat_id, is_first_message)
+    user_message_text = add_greeting_if_needed(user_message_text, is_first_message)
+    # Удаляем ID в скобках из сообщения (после всех преобразований)
+    text_before_clean = user_message_text
+    try:
+        user_message_text = remove_id_brackets_from_text(user_message_text)
+        if text_before_clean != user_message_text:
+            logger.debug(f"ID удалены из сообщения. Длина до: {len(text_before_clean)}, после: {len(user_message_text)}")
+    except Exception as e:
+        logger.error(f"Ошибка при удалении ID из сообщения: {e}", exc_info=True)
     await update.message.reply_text(user_message_text, parse_mode=ParseMode.HTML)
 
     # Отправляем ответ AI в админ-панель (если настроено)
@@ -193,11 +199,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Обработка уведомления CallManager
     if isinstance(agent_response, dict) and agent_response.get("manager_alert"):
-        manager_alert = remove_id_brackets_from_text(agent_response["manager_alert"])
-        manager_alert = normalize_dates_in_text(manager_alert)
+        manager_alert = normalize_dates_in_text(agent_response["manager_alert"])
         manager_alert = normalize_times_in_text(manager_alert)
         manager_alert = convert_yclients_links_in_text(manager_alert)
         manager_alert = convert_bold_markdown_to_html(manager_alert)
+        # Удаляем ID в скобках из уведомления (после всех преобразований)
+        manager_alert = remove_id_brackets_from_text(manager_alert)
         
         # Отправляем уведомление в админ-панель (если настроено)
         if admin_service and update.effective_user:
