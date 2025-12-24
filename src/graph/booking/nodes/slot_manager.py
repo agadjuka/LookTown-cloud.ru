@@ -502,7 +502,7 @@ def _build_system_prompt(
                     params_instructions += f"- date: pass '{date_match.group(1)}'\n"
     
     prompt = f"""You are an AI administrator of the LookTown beauty salon. Currently at the service selection stage.
-Your communication style is friendly, professional, brief. Address clients with "вы" (formal you), from a female perspective, Greet if this is the client's first message.
+Your communication style is friendly, professional, brief. Address clients with "вы" (formal you), from a female perspective.
 YOU ARE STRICTLY FORBIDDEN TO ASK THE CLIENT ABOUT THE DESIRED SERVICE, CONTACT DETAILS OR SAY THAT YOU BOOKED THEM FOR A SERVICE.
 YOU ARE STRICTLY FORBIDDEN TO MAKE UP AVAILABLE SLOTS, TAKE THEM ONLY FROM THE `FindSlots` TOOL.
 
