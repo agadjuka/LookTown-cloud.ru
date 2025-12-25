@@ -383,18 +383,18 @@ async def create_booking_logic(
         # 9. Формируем успешный ответ с полной информацией
         message_lines = [
             f"{client_name}, Вы записаны на услугу:",
-            f"{service_title}",
+            f"**{service_title}**",
             f"",
-            f"Дата и время: {formatted_datetime}",
-            f"Мастер: {master_name_result}"
+            f"**Дата и время:** {formatted_datetime}",
+            f"**Мастер:** {master_name_result}"
         ]
         
         if price is not None:
-            message_lines.append(f"Цена: {price} руб.")
+            message_lines.append(f"**Цена:** {price} руб.")
         
         message_lines.append("")
         message_lines.append("Будем вас ждать! 🌻")
-        message_lines.append("\n((Отправь клиент именно этот текст))")
+        message_lines.append("\n((Отправь клиенту именно этот текст с сохранением форматирования и **))")
         
         message = "\n".join(message_lines)
         

@@ -53,12 +53,48 @@ def slot_manager_node(state: ConversationState) -> ConversationState:
     slot_time_verified = booking_state.get("slot_time_verified", False)
     
     # Если slot_time указан, но не проверен - проверяем его доступность
+    # ВАЖНО: Если время 00:00, это не считается выбранным временем, обрабатываем как дату без времени
     if slot_time and not slot_time_verified:
+        if _is_midnight_time(slot_time):
+            logger.info(f"Обнаружено время 00:00 в slot_time={slot_time}, обрабатываем как дату без времени")
+            # Сбрасываем slot_time, чтобы slot_manager искал слоты на эту дату
+            updated_booking_state = booking_state.copy()
+            updated_booking_state["slot_time"] = None
+            updated_booking_state["slot_time_verified"] = None
+            # Продолжаем с поиском слотов на эту дату
+            return _find_and_offer_slots(
+                {
+                    **state,
+                    "extracted_info": {
+                        **state.get("extracted_info", {}),
+                        "booking": updated_booking_state
+                    }
+                },
+                updated_booking_state,
+                service_id
+            )
         logger.info(f"Проверка доступности указанного времени: {slot_time}")
         return _verify_slot_time_availability(state, booking_state, service_id, slot_time)
     
     # Иначе - обычная логика: ищем и предлагаем слоты
     return _find_and_offer_slots(state, booking_state, service_id)
+
+
+def _is_midnight_time(slot_time: str) -> bool:
+    """
+    Проверяет, является ли время в slot_time полночью (00:00)
+    
+    Args:
+        slot_time: Время в формате "YYYY-MM-DD HH:MM"
+        
+    Returns:
+        True, если время равно 00:00, иначе False
+    """
+    try:
+        dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+        return dt.hour == 0 and dt.minute == 0
+    except (ValueError, AttributeError):
+        return False
 
 
 def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str:
@@ -75,8 +111,16 @@ def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str
     if slot_time:
         # Если есть конкретное время, преобразуем его в пожелание
         # Формат slot_time: "YYYY-MM-DD HH:MM"
+        # ВАЖНО: Если время 00:00, это не считается выбранным временем
+        if _is_midnight_time(slot_time):
+            # Обрабатываем как дату без времени
+            try:
+                dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+                date_str = dt.strftime("%Y-%m-%d")
+                return f"Конкретная дата: {date_str}"
+            except:
+                return ""
         try:
-            from datetime import datetime
             dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
             date_str = dt.strftime("%Y-%m-%d")
             time_str = dt.strftime("%H:%M")

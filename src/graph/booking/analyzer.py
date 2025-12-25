@@ -2,6 +2,7 @@
 Узел анализатора для извлечения сущностей из текста в процессе бронирования
 """
 import json
+from datetime import datetime
 from typing import Dict, Any, Optional
 from ..conversation_state import ConversationState
 from ..utils import messages_to_history
@@ -155,6 +156,15 @@ If you encounter a system error, don't know the answer to a question, or the cli
             logger.warning("Не удалось распарсить JSON из ответа analyzer")
             return {}
         
+        # Проверяем, если slot_time имеет время 00:00, то не устанавливаем slot_time
+        # (это означает, что указана только дата, без времени)
+        if "slot_time" in extracted_data and extracted_data["slot_time"]:
+            slot_time = extracted_data["slot_time"]
+            if _is_midnight_time(slot_time):
+                logger.info(f"Обнаружено время 00:00 в slot_time={slot_time}, обрабатываем как дату без времени")
+                # Удаляем slot_time из extracted_data, чтобы не устанавливать его
+                extracted_data.pop("slot_time")
+        
         # Обновляем состояние бронирования (не затираем существующие данные None-ами)
         logger.debug(f"booking_analyzer: перед merge_booking_state, booking_state: {booking_state}")
         logger.debug(f"booking_analyzer: extracted_data от LLM: {extracted_data}")
@@ -180,6 +190,23 @@ If you encounter a system error, don't know the answer to a question, or the cli
         logger.error(f"Ошибка в booking_analyzer_node: {e}", exc_info=True)
         # Возвращаем состояние без изменений при ошибке
         return {}
+
+
+def _is_midnight_time(slot_time: str) -> bool:
+    """
+    Проверяет, является ли время в slot_time полночью (00:00)
+    
+    Args:
+        slot_time: Время в формате "YYYY-MM-DD HH:MM"
+        
+    Returns:
+        True, если время равно 00:00, иначе False
+    """
+    try:
+        dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+        return dt.hour == 0 and dt.minute == 0
+    except (ValueError, AttributeError):
+        return False
 
 
 def _format_current_state(booking_state: Dict[str, Any]) -> str:

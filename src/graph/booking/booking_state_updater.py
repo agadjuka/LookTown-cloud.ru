@@ -2,6 +2,7 @@
 Общие функции для обновления состояния бронирования из JSON ответов LLM
 """
 import json
+from datetime import datetime
 from typing import Dict, Any, Optional
 from ...services.logger_service import logger
 
@@ -49,6 +50,23 @@ def parse_json_from_response(response_content: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _is_midnight_time(slot_time: str) -> bool:
+    """
+    Проверяет, является ли время в slot_time полночью (00:00)
+    
+    Args:
+        slot_time: Время в формате "YYYY-MM-DD HH:MM"
+        
+    Returns:
+        True, если время равно 00:00, иначе False
+    """
+    try:
+        dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
+        return dt.hour == 0 and dt.minute == 0
+    except (ValueError, AttributeError):
+        return False
+
+
 def merge_booking_state(
     current_state: Dict[str, Any],
     extracted_data: Dict[str, Any]
@@ -58,7 +76,8 @@ def merge_booking_state(
     
     Логика обновления:
     1. Если LLM вернула None для service_id (смена темы) - жесткий сброс связанных полей
-    2. Обычное обновление остальных полей (только не-None значения)
+    2. Если slot_time имеет время 00:00 - не устанавливаем slot_time (это дата без времени)
+    3. Обычное обновление остальных полей (только не-None значения)
     
     Args:
         current_state: Текущее состояние бронирования
@@ -78,6 +97,13 @@ def merge_booking_state(
         current_details["slot_time_verified"] = None
         current_details["master_id"] = None
         current_details.pop("master_name", None)  # Удаляем, если есть
+    
+    # 2. Если slot_time имеет время 00:00, не устанавливаем slot_time
+    if "slot_time" in extracted_data and extracted_data["slot_time"]:
+        if _is_midnight_time(extracted_data["slot_time"]):
+            logger.info(f"Обнаружено время 00:00 в slot_time={extracted_data['slot_time']}, не устанавливаем slot_time")
+            # Удаляем slot_time из extracted_data, чтобы не устанавливать его
+            extracted_data.pop("slot_time")
     
     # Если slot_time сбрасывается явно, сбрасываем и slot_time_verified
     if "slot_time" in extracted_data and extracted_data["slot_time"] is None:
