@@ -78,3 +78,4 @@ class Thread:
         """Получить последние N сообщений"""
         return self._messages[-count:] if len(self._messages) > count else self._messages
 
+

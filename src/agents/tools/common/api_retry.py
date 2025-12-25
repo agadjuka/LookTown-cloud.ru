@@ -85,3 +85,4 @@ async def retry_with_backoff(
         raise last_exception
     raise Exception(f"{operation_name}: все попытки исчерпаны без результата")
 
+
