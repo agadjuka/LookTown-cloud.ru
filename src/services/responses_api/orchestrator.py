@@ -69,11 +69,14 @@ class ResponsesOrchestrator:
             messages[-1].get("content") == user_message
         )
         
+        # Флаг: был ли добавлен user_message в этот вызов
+        user_message_added = False
         if not last_message_is_current:
             messages.append({
                 "role": "user",
                 "content": user_message
             })
+            user_message_added = True
         
         # Цикл для обработки множественных вызовов инструментов
         max_iterations = 10
@@ -139,7 +142,9 @@ class ResponsesOrchestrator:
                 if iteration == 1:
                     error_message = "Извините, произошла техническая ошибка. Пожалуйста, попробуйте еще раз через несколько секунд."
                     # При ошибке новых сообщений нет (исключаем user_message, так как он уже есть в state["messages"])
-                    new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
+                    # Если user_message был добавлен, начинаем с history_length + 1, иначе с history_length
+                    start_index = history_length + 1 if user_message_added else history_length
+                    new_messages = messages[start_index:] if len(messages) > start_index else []
                     return {
                         "reply": error_message,
                         "tool_calls": tool_calls_info,
@@ -228,7 +233,9 @@ class ResponsesOrchestrator:
                             
                             # Извлекаем новые сообщения (включая AIMessage с tool_calls и ToolMessage)
                             # Исключаем user_message, так как он уже есть в state["messages"]
-                            new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
+                            # Если user_message был добавлен, начинаем с history_length + 1, иначе с history_length
+                            start_index = history_length + 1 if user_message_added else history_length
+                            new_messages = messages[start_index:] if len(messages) > start_index else []
                             return {
                                 "reply": escalation_result.get("user_message"),
                                 "tool_calls": tool_calls_info,
@@ -275,9 +282,10 @@ class ResponsesOrchestrator:
             reply_text = "Извините, не удалось получить ответ. Пожалуйста, попробуйте еще раз."
         
         # КРИТИЧНО: Извлекаем только НОВЫЕ сообщения (те, что были добавлены в ходе этого вызова)
-        # Это все сообщения после истории (начиная с history_length + 1, чтобы исключить user_message)
-        # user_message уже есть в state["messages"], поэтому его не включаем
-        new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
+        # Это все сообщения после истории (исключаем user_message, так как он уже есть в state["messages"])
+        # Если user_message был добавлен в этот вызов, начинаем с history_length + 1, иначе с history_length
+        start_index = history_length + 1 if user_message_added else history_length
+        new_messages = messages[start_index:] if len(messages) > start_index else []
         
         return {
             "reply": reply_text,
