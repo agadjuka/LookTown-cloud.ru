@@ -82,7 +82,6 @@ You ONLY need to get the client's name and phone number. NEVER CHECK AVAIBLITY, 
 Approximate phrasing: Хорошо, пожалуйста, напишите ваше имя и номер телефона. (you can change depending on the situation)
 
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
-If you see "Error" or "System Error" in tool results, immediately call the manager.
 .
 """
     

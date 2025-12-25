@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from ....common.thread import Thread
 
 from ..common.services_data_loader import _data_loader
-from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 
 try:
     from ....services.logger_service import logger
@@ -23,7 +22,6 @@ class GetCategories(BaseModel):
     Get a list of all service categories with their IDs.
     """
     
-    @handle_technical_errors("получение списка категорий")
     def process(self, thread: Thread) -> str:
         """
         Получение списка всех категорий услуг
@@ -47,11 +45,13 @@ class GetCategories(BaseModel):
             
             return result
             
+        except FileNotFoundError as e:
+            logger.error(f"Файл с услугами не найден: {e}")
+            return "Файл с данными об услугах не найден"
+        except json.JSONDecodeError as e:
+            logger.error(f"Ошибка парсинга JSON: {e}")
+            return "Ошибка при чтении данных об услугах"
         except Exception as e:
-            if is_technical_error(e):
-                logger.error(f"Техническая ошибка при получении категорий: {e}", exc_info=True)
-                return format_system_error(e, "получение списка категорий")
-            else:
-                logger.error(f"Неожиданная ошибка при получении категорий: {e}", exc_info=True)
-                return format_system_error(e, "получение списка категорий")
+            logger.error(f"Ошибка при получении категорий: {e}")
+            return f"Ошибка при получении категорий: {str(e)}"
 

@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from ....common.thread import Thread
 
 from ..common.masters_data_loader import _masters_data_loader
-from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .formatter import MastersFormatter
 
 try:
@@ -24,7 +23,6 @@ class Masters(BaseModel):
     Use when the client asks "какие у вас мастера?", "расскажите про мастеров", "кто работает в салоне" or similar questions about masters.
     """
     
-    @handle_technical_errors("получение информации о мастерах")
     def process(self, thread: Thread) -> str:
         """
         Получение информации о мастерах
@@ -44,11 +42,10 @@ class Masters(BaseModel):
             
             return result
             
+        except FileNotFoundError as e:
+            logger.error(f"Файл с информацией о мастерах не найден: {e}")
+            return "Файл с информацией о мастерах не найден"
         except Exception as e:
-            if is_technical_error(e):
-                logger.error(f"Техническая ошибка при получении информации о мастерах: {e}", exc_info=True)
-                return format_system_error(e, "получение информации о мастерах")
-            else:
-                logger.error(f"Неожиданная ошибка при получении информации о мастерах: {e}", exc_info=True)
-                return format_system_error(e, "получение информации о мастерах")
+            logger.error(f"Ошибка при получении информации о мастерах: {e}")
+            return f"Ошибка при получении информации о мастерах: {str(e)}"
 

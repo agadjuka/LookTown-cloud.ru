@@ -239,17 +239,9 @@ class YclientsService:
                         data = response_text
                     return {"success": True, "data": data}
                 else:
-                    # Пытаемся распарсить JSON ответ при ошибке
-                    error_data = None
-                    try:
-                        error_data = json.loads(response_text)
-                    except json.JSONDecodeError:
-                        pass
-                    
                     return {
                         "success": False,
                         "error": response_text[:1000],
-                        "error_data": error_data,  # Добавляем распарсенный JSON
                         "status_code": response.status
                     }
     
@@ -428,8 +420,7 @@ class YclientsService:
                         "success": False,
                         "message": None,
                         "data": None,
-                        "error": f"Ошибка при отмене записи: HTTP {response.status}. {response_text[:500]}",
-                        "status_code": response.status
+                        "error": f"Ошибка при отмене записи: HTTP {response.status}. {response_text[:500]}"
                     }
     
     async def reschedule_record(
@@ -499,19 +490,27 @@ class YclientsService:
                     }
                 else:
                     # Обработка типовых ошибок
-                    error_message = f"Ошибка при переносе записи: HTTP {response.status}. {response_text[:500]}"
                     if response.status == 409:
-                        error_message = "Слот занят или нерабочее время. Выберите другое время."
+                        return {
+                            "success": False,
+                            "message": None,
+                            "data": None,
+                            "error": "Слот занят или нерабочее время. Выберите другое время."
+                        }
                     elif response.status == 422:
-                        error_message = "Ошибка валидации данных. Проверьте правильность всех параметров."
-                    
-                    return {
-                        "success": False,
-                        "message": None,
-                        "data": None,
-                        "error": error_message,
-                        "status_code": response.status
-                    }
+                        return {
+                            "success": False,
+                            "message": None,
+                            "data": None,
+                            "error": "Ошибка валидации данных. Проверьте правильность всех параметров."
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": None,
+                            "data": None,
+                            "error": f"Ошибка при переносе записи: HTTP {response.status}. {response_text[:500]}"
+                        }
     
     async def get_all_services(self) -> List[Dict[str, Any]]:
         """

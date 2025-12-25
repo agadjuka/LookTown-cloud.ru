@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
-from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import create_booking_logic
 
 try:
@@ -46,7 +45,6 @@ class CreateBooking(BaseModel):
         description="Master name (optional) (if the client explicitly asked to book with a specific master). DO NOT specify if the client did not ask for a specific master."
     )
     
-    @handle_technical_errors("создание записи")
     def process(self, thread: Thread) -> str:
         """
         Создание записи на услугу
@@ -55,11 +53,11 @@ class CreateBooking(BaseModel):
             Сообщение о результате создания записи
         """
         try:
-            yclients_service = YclientsService()
-        except ValueError as e:
-            return format_system_error(e, "создание записи")
-        
-        try:
+            try:
+                yclients_service = YclientsService()
+            except ValueError as e:
+                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
+            
             result = asyncio.run(
                 create_booking_logic(
                     yclients_service=yclients_service,
@@ -73,12 +71,10 @@ class CreateBooking(BaseModel):
             
             return result.get('message', 'Неизвестная ошибка')
             
+        except ValueError as e:
+            logger.error(f"Ошибка конфигурации CreateBooking: {e}")
+            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            if is_technical_error(e):
-                logger.error(f"Техническая ошибка при создании записи: {e}", exc_info=True)
-                return format_system_error(e, "создание записи")
-            else:
-                # Бизнес-ошибки должны обрабатываться в логике
-                logger.error(f"Неожиданная ошибка при создании записи: {e}", exc_info=True)
-                return format_system_error(e, "создание записи")
+            logger.error(f"Ошибка при создании записи: {e}", exc_info=True)
+            return f"Ошибка при создании записи: {str(e)}"
 

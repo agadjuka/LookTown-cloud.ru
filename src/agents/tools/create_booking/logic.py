@@ -8,7 +8,6 @@ from typing import Optional, Tuple, List
 from ..common.yclients_service import YclientsService, Master
 from ..common.phone_utils import normalize_phone
 from ..common.book_times_logic import _normalize_name, _get_name_variants, _find_master_by_name
-from ..common.error_handler import APIError
 
 
 def _normalize_time(time_str: str) -> str:
@@ -287,33 +286,7 @@ async def create_booking_logic(
         )
         
         if not booking_response.get("success"):
-            # Пытаемся извлечь структурированную информацию об ошибке
-            error_data = booking_response.get("error_data")
             error_msg = booking_response.get("error", "Неизвестная ошибка")
-            status_code = booking_response.get("status_code")
-            
-            # Если есть статус код от API (4xx/5xx) - это техническая ошибка API
-            if status_code:
-                # Извлекаем сообщение из meta, если есть
-                error_message = error_msg
-                if error_data and isinstance(error_data, dict):
-                    meta = error_data.get("meta", {})
-                    if isinstance(meta, dict):
-                        meta_message = meta.get("message", "")
-                        if meta_message:
-                            error_message = meta_message
-                
-                # Выбрасываем исключение, которое будет обработано как техническая ошибка
-                raise APIError(status_code=status_code, message=error_message)
-            
-            # Если нет status_code, но есть ошибка - это бизнес-логика
-            if error_data and isinstance(error_data, dict):
-                meta = error_data.get("meta", {})
-                if isinstance(meta, dict):
-                    meta_message = meta.get("message", "")
-                    if meta_message:
-                        error_msg = meta_message
-            
             return {
                 "success": False,
                 "message": f"Ошибка при создании записи: {error_msg}",
@@ -407,7 +380,7 @@ async def create_booking_logic(
         
         formatted_datetime = format_datetime_russian(datetime)
         
-        # 7. Формируем успешный ответ с полной информацией
+        # 9. Формируем успешный ответ с полной информацией
         message_lines = [
             f"{client_name}, Вы записаны на услугу:",
             f"**{service_title}**",

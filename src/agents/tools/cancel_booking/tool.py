@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
-from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import cancel_booking_logic
 
 try:
@@ -27,7 +26,6 @@ class CancelBooking(BaseModel):
         description="Booking ID. Get from GetClientRecords"
     )
     
-    @handle_technical_errors("отмена записи")
     def process(self, thread: Thread) -> str:
         """
         Отмена записи по ID
@@ -36,11 +34,11 @@ class CancelBooking(BaseModel):
             Сообщение о результате отмены записи
         """
         try:
-            yclients_service = YclientsService()
-        except ValueError as e:
-            return format_system_error(e, "отмена записи")
-        
-        try:
+            try:
+                yclients_service = YclientsService()
+            except ValueError as e:
+                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
+            
             result = asyncio.run(
                 cancel_booking_logic(
                     yclients_service=yclients_service,
@@ -54,11 +52,10 @@ class CancelBooking(BaseModel):
                 error = result.get('error', 'Неизвестная ошибка')
                 return f"Ошибка: {error}"
             
+        except ValueError as e:
+            logger.error(f"Ошибка конфигурации CancelBooking: {e}")
+            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            if is_technical_error(e):
-                logger.error(f"Техническая ошибка при отмене записи: {e}", exc_info=True)
-                return format_system_error(e, "отмена записи")
-            else:
-                logger.error(f"Неожиданная ошибка при отмене записи: {e}", exc_info=True)
-                return format_system_error(e, "отмена записи")
+            logger.error(f"Ошибка при отмене записи: {e}", exc_info=True)
+            return f"Ошибка при отмене записи: {str(e)}"
 

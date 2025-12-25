@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
-from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import find_slots_by_period, _is_generic_master_term, find_alternative_masters_slots
 
 try:
@@ -54,7 +53,6 @@ class FindSlots(BaseModel):
         description="Date range (optional field). Format: 'YYYY-MM-DD:YYYY-MM-DD'"
     )
     
-    @handle_technical_errors("поиск доступных слотов")
     def process(self, thread: Thread) -> str:
         """
         Поиск доступных временных слотов с фильтрацией по периоду времени
@@ -63,9 +61,10 @@ class FindSlots(BaseModel):
             Отформатированный список доступных временных интервалов по датам
         """
         try:
-            yclients_service = YclientsService()
-        except ValueError as e:
-            return format_system_error(e, "поиск доступных слотов")
+            try:
+                yclients_service = YclientsService()
+            except ValueError as e:
+                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
             
             # Игнорируем master_name, если это общий термин (мастер, топ-мастер, юниор)
             master_name_to_use = None
@@ -242,13 +241,12 @@ class FindSlots(BaseModel):
             result_lines.append("((Строго сохраняй форматирование, в т.ч. первую строку))")
             return "\n".join(result_lines).strip()
             
+        except ValueError as e:
+            logger.error(f"Ошибка конфигурации FindSlots: {e}")
+            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            if is_technical_error(e):
-                logger.error(f"Техническая ошибка при поиске слотов: {e}", exc_info=True)
-                return format_system_error(e, "поиск доступных слотов")
-            else:
-                logger.error(f"Неожиданная ошибка при поиске слотов: {e}", exc_info=True)
-                return format_system_error(e, "поиск доступных слотов")
+            logger.error(f"Ошибка при поиске слотов: {e}", exc_info=True)
+            return f"Ошибка при поиске доступных слотов: {str(e)}"
     
     def _format_time_period_display(self, time_period: str) -> str:
         """Форматирует период времени для отображения пользователю"""
