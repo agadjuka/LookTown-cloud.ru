@@ -78,12 +78,12 @@ If you encounter a system error, don't know the answer to a question, or the cli
 
     # Подготавливаем историю для контекста
     # ВАЖНО: Передаем ВСЕ типы сообщений (user, assistant, tool, system) для полного контекста
-    # ВАЖНО: Сохраняем CallManager только если он входит в последние 15 сообщений
+    # ВАЖНО: Сохраняем CallManager только если он входит в последние 10 сообщений
     input_messages = []
     if history:
-        # Берем последние 15 сообщений для контекста (увеличено для лучшего контекста)
-        # CallManager будет включен, если он входит в эти 15 сообщений
-        recent_history = history[-15:] if len(history) > 15 else history
+        # Берем последние 10 сообщений для контекста
+        # CallManager будет включен, если он входит в эти 10 сообщений
+        recent_history = history[-10:] if len(history) > 10 else history
         
         for msg in recent_history:
             role = msg.get("role", "user")

@@ -84,21 +84,21 @@ class ResponsesOrchestrator:
         while iteration < max_iterations:
             iteration += 1
             
-            # Обрезаем историю перед вызовом LLM (оставляем последние 20 сообщений)
+            # Обрезаем историю перед вызовом LLM (оставляем последние 10 сообщений)
             # Используем простую обрезку по количеству сообщений
-            # ВАЖНО: Сохраняем CallManager только если он входит в последние 20 сообщений
+            # ВАЖНО: Сохраняем CallManager только если он входит в последние 10 сообщений
             try:
                 # Разделяем системные и несистемные сообщения
                 system_msgs = [msg for msg in messages if msg.get("role") == "system"]
                 non_system_msgs = [msg for msg in messages if msg.get("role") != "system"]
                 
-                # Берем последние 20 несистемных сообщений
-                if len(non_system_msgs) > 20:
-                    recent_non_system = non_system_msgs[-20:]
+                # Берем последние 10 несистемных сообщений
+                if len(non_system_msgs) > 10:
+                    recent_non_system = non_system_msgs[-10:]
                 else:
                     recent_non_system = non_system_msgs
                 
-                # Извлекаем CallManager сообщения только из последних 20
+                # Извлекаем CallManager сообщения только из последних 10
                 call_manager_ids = set()
                 for msg in recent_non_system:
                     role = msg.get("role")
@@ -117,7 +117,7 @@ class ResponsesOrchestrator:
                             if tool_name == "CallManager" and call_id:
                                 call_manager_ids.add(call_id)
                 
-                # Фильтруем: оставляем все сообщения из последних 20, включая CallManager
+                # Фильтруем: оставляем все сообщения из последних 10, включая CallManager
                 # (CallManager уже входит в recent_non_system, если он там был)
                 messages_to_send = system_msgs + recent_non_system
                 
