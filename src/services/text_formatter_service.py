@@ -5,7 +5,7 @@
 from typing import Optional
 from .date_normalizer import normalize_dates_in_text
 from .time_normalizer import normalize_times_in_text
-from .link_converter import convert_yclients_links_in_text
+from .link_converter import convert_markdown_links_in_text
 from .text_formatter import convert_bold_markdown_to_html
 from .id_cleaner import remove_id_brackets_from_text
 from .greeting_handler import add_greeting_if_needed
@@ -36,8 +36,8 @@ class TextFormatterService:
         text = normalize_dates_in_text(text)
         text = normalize_times_in_text(text)
         
-        # Преобразуем ссылки yclients.com в HTML-гиперссылки
-        text = convert_yclients_links_in_text(text)
+        # Преобразуем Markdown ссылки [текст](ссылка) в HTML-гиперссылки
+        text = convert_markdown_links_in_text(text)
         
         # Заменяем Markdown жирный текст (**текст**) на HTML теги (<b>текст</b>)
         text = convert_bold_markdown_to_html(text)
@@ -68,8 +68,8 @@ class TextFormatterService:
         text = normalize_dates_in_text(text)
         text = normalize_times_in_text(text)
         
-        # Преобразуем ссылки yclients.com в HTML-гиперссылки
-        text = convert_yclients_links_in_text(text)
+        # Преобразуем Markdown ссылки [текст](ссылка) в HTML-гиперссылки
+        text = convert_markdown_links_in_text(text)
         
         # Заменяем Markdown жирный текст на HTML теги
         text = convert_bold_markdown_to_html(text)
