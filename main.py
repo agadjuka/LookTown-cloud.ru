@@ -212,6 +212,12 @@ async def webhook_handler(request: Request):
     """Обработчик webhook от Telegram"""
     return await webhook(request)
 
+# Дополнительный маршрут для совместимости с /telegram/webhook
+@app.post("/telegram/webhook", tags=["Telegram"])
+async def telegram_webhook_handler(request: Request):
+    """Обработчик webhook от Telegram (альтернативный путь)"""
+    return await webhook(request)
+
 @app.post("/", tags=["Root"])
 async def root_post_handler(request: Request):
     """POST обработчик для корневого пути"""
