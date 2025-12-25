@@ -161,25 +161,14 @@ class AgentService:
                 # Если только одно сообщение от пользователя (текущее), значит это первое сообщение
                 is_first_message = user_messages_count == 1
                 
-                # Нормализуем даты и время в ответе
-                from .date_normalizer import normalize_dates_in_text
-                from .time_normalizer import normalize_times_in_text
-                from .link_converter import convert_yclients_links_in_text
-                from .id_cleaner import remove_id_brackets_from_text
+                # Форматируем ответ агента
+                from .text_formatter_service import format_agent_response, format_manager_alert
                 
-                answer = normalize_dates_in_text(answer)
-                answer = normalize_times_in_text(answer)
-                answer = convert_yclients_links_in_text(answer)
-                # Удаляем ID в скобках из ответа
-                answer = remove_id_brackets_from_text(answer)
+                answer = format_agent_response(answer, is_first_message)
                 
                 result = {"user_message": answer, "is_first_message": is_first_message}
                 if manager_alert:
-                    manager_alert = normalize_dates_in_text(manager_alert)
-                    manager_alert = normalize_times_in_text(manager_alert)
-                    manager_alert = convert_yclients_links_in_text(manager_alert)
-                    # Удаляем ID в скобках из уведомления
-                    manager_alert = remove_id_brackets_from_text(manager_alert)
+                    manager_alert = format_manager_alert(manager_alert)
                     result["manager_alert"] = manager_alert
                 
                 return result

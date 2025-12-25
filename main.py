@@ -30,7 +30,7 @@ except Exception as e:
     sys.exit(1)
 
 try:
-    from service_factory import get_yandex_agent_service
+    from service_factory import get_agent_service
     print("✅ service_factory импортирован", flush=True)
 except Exception as e:
     print(f"❌ Ошибка импорта service_factory: {e}", flush=True)
@@ -158,7 +158,7 @@ async def startup_event():
     # Проверяем подключение к YDB при старте (lazy инициализация при первом запросе)
     try:
         logger.info("🔍 Проверка сервисов...")
-        get_yandex_agent_service()
+        get_agent_service()
         logger.success("✅ Все сервисы готовы")
     except Exception as e:
         logger.warning(f"⚠️ Предупреждение при инициализации сервисов: {str(e)}")

@@ -51,3 +51,4 @@ class MastersFormatter:
         
         return "\n".join(result_parts)
 
+
