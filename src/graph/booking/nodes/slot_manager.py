@@ -4,6 +4,7 @@
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional
+from difflib import SequenceMatcher
 from ...conversation_state import ConversationState
 from ...utils import messages_to_history, dicts_to_messages, filter_history_conversation_only
 from ..state import BookingSubState
@@ -18,6 +19,7 @@ from ....agents.tools.find_slots.tool import FindSlots
 from ....agents.tools.find_slots.logic import find_slots_by_period
 from ....agents.tools.common.yclients_service import YclientsService
 from ....agents.tools.call_manager import CallManager
+from ....agents.tools.common.book_times_logic import _get_name_variants, _normalize_name
 
 
 def slot_manager_node(state: ConversationState) -> ConversationState:
@@ -166,6 +168,59 @@ def _extract_time_preference(slot_time: Optional[str], user_message: str) -> str
     return ""
 
 
+def _is_master_name_match(search_name: str, master_name: str, similarity_threshold: float = 0.85) -> bool:
+    """
+    Проверяет, соответствует ли имя мастера поисковому запросу с учетом нечеткого сравнения.
+    
+    Использует несколько стратегий:
+    1. Точное совпадение (после нормализации)
+    2. Проверка через вариации имен (Наталья/Наталия)
+    3. Нечеткое сравнение через SequenceMatcher (для небольших различий в написании)
+    
+    Args:
+        search_name: Имя для поиска (из запроса пользователя)
+        master_name: Имя мастера из базы данных
+        similarity_threshold: Порог схожести для нечеткого сравнения (0.0-1.0)
+        
+    Returns:
+        True если имена считаются совпадающими, False иначе
+    """
+    if not search_name or not master_name:
+        return False
+    
+    # Нормализуем имена
+    normalized_search = _normalize_name(search_name)
+    normalized_master = _normalize_name(master_name)
+    
+    # 1. Точное совпадение
+    if normalized_search == normalized_master:
+        return True
+    
+    # 2. Проверка через вариации имен
+    search_variants = _get_name_variants(search_name)
+    master_variants = _get_name_variants(master_name)
+    
+    # Проверяем пересечение вариаций
+    if any(variant in master_variants for variant in search_variants):
+        return True
+    
+    # 3. Проверка вхождения (для случаев типа "Наталья" в "Наталья Иванова")
+    if normalized_search in normalized_master or normalized_master in normalized_search:
+        return True
+    
+    # 4. Нечеткое сравнение через SequenceMatcher
+    similarity = SequenceMatcher(None, normalized_search, normalized_master).ratio()
+    
+    # Дополнительная проверка: если имена короткие (до 6 символов), требуем более высокую схожесть
+    if len(normalized_search) <= 6 or len(normalized_master) <= 6:
+        # Для коротких имен требуем минимум 0.9 схожести
+        effective_threshold = max(similarity_threshold, 0.9)
+    else:
+        effective_threshold = similarity_threshold
+    
+    return similarity >= effective_threshold
+
+
 def _verify_slot_time_availability(
     state: ConversationState,
     booking_state: Dict[str, Any],
@@ -184,14 +239,22 @@ def _verify_slot_time_availability(
     Returns:
         Обновленное состояние с результатом проверки
     """
+    logger.info(f"[SLOT_VERIFY] ===== НАЧАЛО ПРОВЕРКИ ДОСТУПНОСТИ СЛОТА =====")
+    logger.info(f"[SLOT_VERIFY] Входные параметры:")
+    logger.info(f"[SLOT_VERIFY]   - slot_time: {slot_time}")
+    logger.info(f"[SLOT_VERIFY]   - service_id: {service_id}")
+    logger.info(f"[SLOT_VERIFY]   - booking_state: {booking_state}")
+    
     try:
         # Парсим время
+        logger.info(f"[SLOT_VERIFY] ЭТАП 1: Парсинг времени slot_time='{slot_time}'")
         try:
             dt = datetime.strptime(slot_time, "%Y-%m-%d %H:%M")
             date_str = dt.strftime("%Y-%m-%d")
             time_str = dt.strftime("%H:%M")
-        except ValueError:
-            logger.error(f"Неверный формат slot_time: {slot_time}")
+            logger.info(f"[SLOT_VERIFY] ✓ Парсинг успешен: date_str='{date_str}', time_str='{time_str}'")
+        except ValueError as parse_error:
+            logger.error(f"[SLOT_VERIFY] ✗ ОШИБКА ПАРСИНГА: Неверный формат slot_time: {slot_time}, ошибка: {parse_error}")
             # Сбрасываем некорректное время
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
@@ -205,14 +268,19 @@ def _verify_slot_time_availability(
             }
         
         # Получаем параметры мастера
+        logger.info(f"[SLOT_VERIFY] ЭТАП 2: Получение параметров мастера")
         master_id = booking_state.get("master_id")
         master_name = booking_state.get("master_name")
+        logger.info(f"[SLOT_VERIFY]   - master_id: {master_id}")
+        logger.info(f"[SLOT_VERIFY]   - master_name: {master_name}")
         
         # Проверяем доступность через FindSlots
+        logger.info(f"[SLOT_VERIFY] ЭТАП 3: Инициализация YclientsService")
         try:
             yclients_service = YclientsService()
+            logger.info(f"[SLOT_VERIFY] ✓ YclientsService успешно инициализирован")
         except ValueError as e:
-            logger.error(f"Ошибка конфигурации YclientsService: {e}")
+            logger.error(f"[SLOT_VERIFY] ✗ ОШИБКА: Ошибка конфигурации YclientsService: {e}")
             # Сбрасываем время при ошибке конфигурации
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
@@ -226,6 +294,14 @@ def _verify_slot_time_availability(
             }
         
         # Вызываем find_slots_by_period для проверки конкретного времени
+        logger.info(f"[SLOT_VERIFY] ЭТАП 4: Вызов find_slots_by_period")
+        logger.info(f"[SLOT_VERIFY]   Параметры запроса:")
+        logger.info(f"[SLOT_VERIFY]     - service_id: {service_id}")
+        logger.info(f"[SLOT_VERIFY]     - time_period: {time_str}")
+        logger.info(f"[SLOT_VERIFY]     - master_name: {master_name}")
+        logger.info(f"[SLOT_VERIFY]     - master_id: {master_id}")
+        logger.info(f"[SLOT_VERIFY]     - date: {date_str}")
+        
         result = asyncio.run(
             find_slots_by_period(
                 yclients_service=yclients_service,
@@ -237,11 +313,17 @@ def _verify_slot_time_availability(
             )
         )
         
+        logger.info(f"[SLOT_VERIFY] ✓ find_slots_by_period вернул результат")
+        logger.info(f"[SLOT_VERIFY]   Структура результата: {list(result.keys())}")
+        logger.info(f"[SLOT_VERIFY]   Полный результат: {result}")
+        
         if result.get('error'):
             error_message = result['error']
             is_technical_error = result.get('is_technical_error', False)
             
-            logger.warning(f"Ошибка при проверке доступности времени: {error_message}")
+            logger.warning(f"[SLOT_VERIFY] ✗ ЭТАП 5: ОБНАРУЖЕНА ОШИБКА В РЕЗУЛЬТАТЕ")
+            logger.warning(f"[SLOT_VERIFY]   - error_message: {error_message}")
+            logger.warning(f"[SLOT_VERIFY]   - is_technical_error: {is_technical_error}")
             
             # Если это техническая ошибка (429 после всех retry) - вызываем менеджера
             if is_technical_error:
@@ -303,7 +385,9 @@ def _verify_slot_time_availability(
         
         # Проверяем, есть ли это время в результатах
         # Структура результата: {"masters": [{"results": [{"date": ..., "slots": [...]}]}]}
+        logger.info(f"[SLOT_VERIFY] ЭТАП 5: Анализ результатов поиска слотов")
         masters = result.get('masters', [])
+        logger.info(f"[SLOT_VERIFY]   Количество мастеров в результате: {len(masters)}")
         time_found = False
         
         # Преобразуем время в минуты для проверки
@@ -312,52 +396,107 @@ def _verify_slot_time_availability(
             return int(parts[0]) * 60 + int(parts[1])
         
         target_minutes = time_to_minutes(time_str)
+        logger.info(f"[SLOT_VERIFY]   Целевое время '{time_str}' в минутах: {target_minutes}")
         
         # Проверяем результаты для каждого мастера
-        for master_data in masters:
+        logger.info(f"[SLOT_VERIFY]   Начинаем проверку результатов для каждого мастера...")
+        for master_idx, master_data in enumerate(masters):
+            logger.info(f"[SLOT_VERIFY]   --- Мастер #{master_idx + 1} ---")
+            logger.info(f"[SLOT_VERIFY]     Данные мастера: {master_data}")
             # Если указан конкретный мастер, проверяем соответствие
             if master_id:
                 result_master_id = master_data.get('master_id')
+                logger.info(f"[SLOT_VERIFY]     Проверка соответствия master_id: ожидается {master_id}, получено {result_master_id}")
                 if result_master_id != master_id:
+                    logger.info(f"[SLOT_VERIFY]     ✗ ID мастера не совпадает, пропускаем этого мастера")
                     continue
+                logger.info(f"[SLOT_VERIFY]     ✓ ID мастера совпадает")
             elif master_name:
                 result_master_name = master_data.get('master_name')
-                if result_master_name and result_master_name.lower() != master_name.lower():
+                logger.info(f"[SLOT_VERIFY]     Проверка соответствия master_name: ожидается '{master_name}', получено '{result_master_name}'")
+                
+                if not result_master_name:
+                    logger.info(f"[SLOT_VERIFY]     ✗ Имя мастера отсутствует в результате, пропускаем")
                     continue
+                
+                # Используем нечеткое сравнение имен
+                is_match = _is_master_name_match(master_name, result_master_name)
+                
+                if not is_match:
+                    # Вычисляем схожесть для логирования
+                    normalized_search = _normalize_name(master_name)
+                    normalized_result = _normalize_name(result_master_name)
+                    similarity = SequenceMatcher(None, normalized_search, normalized_result).ratio()
+                    logger.info(f"[SLOT_VERIFY]     ✗ Имя мастера не совпадает (схожесть: {similarity:.2f}), пропускаем этого мастера")
+                    continue
+                
+                logger.info(f"[SLOT_VERIFY]     ✓ Имя мастера совпадает (нечеткое сравнение)")
+            else:
+                logger.info(f"[SLOT_VERIFY]     Мастер не указан, проверяем всех мастеров")
             
             master_results = master_data.get('results', [])
-            for day_result in master_results:
+            logger.info(f"[SLOT_VERIFY]     Количество результатов по датам: {len(master_results)}")
+            for day_idx, day_result in enumerate(master_results):
+                day_date = day_result.get('date')
+                logger.info(f"[SLOT_VERIFY]     --- Результат #{day_idx + 1}, дата: {day_date} ---")
                 if day_result.get('date') == date_str:
+                    logger.info(f"[SLOT_VERIFY]     ✓ Дата совпадает с целевой датой '{date_str}'")
                     slots = day_result.get('slots', [])
+                    logger.info(f"[SLOT_VERIFY]     Количество слотов на эту дату: {len(slots)}")
+                    logger.info(f"[SLOT_VERIFY]     Слоты: {slots}")
                     # Проверяем, есть ли нужное время в слотах
-                    for slot in slots:
+                    for slot_idx, slot in enumerate(slots):
+                        logger.info(f"[SLOT_VERIFY]       Проверка слота #{slot_idx + 1}: '{slot}'")
                         # Слот может быть в формате "HH:MM" или "HH:MM-HH:MM"
                         if '-' in slot:
                             # Интервал: проверяем, попадает ли время в интервал
+                            logger.info(f"[SLOT_VERIFY]         Слот является интервалом")
                             parts = slot.split('-')
                             start_time = parts[0].strip()
                             end_time = parts[1].strip() if len(parts) > 1 else start_time
                             start_minutes = time_to_minutes(start_time)
                             end_minutes = time_to_minutes(end_time)
+                            logger.info(f"[SLOT_VERIFY]         Интервал: {start_time} ({start_minutes} мин) - {end_time} ({end_minutes} мин)")
+                            logger.info(f"[SLOT_VERIFY]         Проверка: {start_minutes} <= {target_minutes} < {end_minutes}")
                             # Время доступно, если оно попадает в интервал (включительно начало, исключительно конец)
                             if start_minutes <= target_minutes < end_minutes:
+                                logger.info(f"[SLOT_VERIFY]         ✓✓✓ ВРЕМЯ НАЙДЕНО В ИНТЕРВАЛЕ! ✓✓✓")
                                 time_found = True
                                 break
+                            else:
+                                logger.info(f"[SLOT_VERIFY]         ✗ Время не попадает в интервал")
                         else:
                             # Отдельное время: точное совпадение
+                            logger.info(f"[SLOT_VERIFY]         Слот является точечным временем")
+                            logger.info(f"[SLOT_VERIFY]         Проверка: '{slot}' == '{time_str}'")
                             if slot == time_str:
+                                logger.info(f"[SLOT_VERIFY]         ✓✓✓ ВРЕМЯ НАЙДЕНО (ТОЧНОЕ СОВПАДЕНИЕ)! ✓✓✓")
                                 time_found = True
                                 break
+                            else:
+                                logger.info(f"[SLOT_VERIFY]         ✗ Время не совпадает")
                     if time_found:
+                        logger.info(f"[SLOT_VERIFY]     Время найдено, прерываем проверку результатов для этой даты")
                         break
+                else:
+                    logger.info(f"[SLOT_VERIFY]     ✗ Дата '{day_date}' не совпадает с целевой '{date_str}', пропускаем")
             if time_found:
+                logger.info(f"[SLOT_VERIFY]   Время найдено, прерываем проверку для этого мастера")
                 break
+            else:
+                logger.info(f"[SLOT_VERIFY]   Время не найдено для этого мастера, переходим к следующему")
+        
+        logger.info(f"[SLOT_VERIFY] ЭТАП 6: Финальный результат проверки")
+        logger.info(f"[SLOT_VERIFY]   time_found: {time_found}")
         
         if time_found:
             # Время доступно - устанавливаем флаг и возвращаем пустой answer
-            logger.info(f"Время {slot_time} доступно, устанавливаем slot_time_verified=True")
+            logger.info(f"[SLOT_VERIFY] ✓✓✓ ИТОГ: Время {slot_time} ДОСТУПНО ✓✓✓")
+            logger.info(f"[SLOT_VERIFY]   Устанавливаем slot_time_verified=True")
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time_verified"] = True
+            logger.info(f"[SLOT_VERIFY]   Обновленное booking_state: {updated_booking_state}")
+            logger.info(f"[SLOT_VERIFY] ===== КОНЕЦ ПРОВЕРКИ (УСПЕХ) =====")
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
@@ -367,7 +506,8 @@ def _verify_slot_time_availability(
             }
         else:
             # Время недоступно - сообщаем клиенту и сбрасываем
-            logger.info(f"Время {slot_time} недоступно")
+            logger.info(f"[SLOT_VERIFY] ✗✗✗ ИТОГ: Время {slot_time} НЕДОСТУПНО ✗✗✗")
+            logger.info(f"[SLOT_VERIFY]   Сбрасываем slot_time и slot_time_verified")
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
             updated_booking_state["slot_time_verified"] = None
@@ -379,6 +519,9 @@ def _verify_slot_time_availability(
             except:
                 formatted_date = date_str
             
+            logger.info(f"[SLOT_VERIFY]   Обновленное booking_state: {updated_booking_state}")
+            logger.info(f"[SLOT_VERIFY]   Ответ пользователю: 'К сожалению, время {time_str} на {formatted_date} недоступно...'")
+            logger.info(f"[SLOT_VERIFY] ===== КОНЕЦ ПРОВЕРКИ (НЕДОСТУПНО) =====")
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
@@ -391,7 +534,11 @@ def _verify_slot_time_availability(
         error_str = str(e).lower()
         is_technical_error = "429" in error_str or "too many requests" in error_str
         
-        logger.error(f"Ошибка при проверке доступности времени: {e}", exc_info=True)
+        logger.error(f"[SLOT_VERIFY] ✗✗✗ КРИТИЧЕСКАЯ ОШИБКА В ПРОЦЕССЕ ПРОВЕРКИ ✗✗✗")
+        logger.error(f"[SLOT_VERIFY]   Тип ошибки: {type(e).__name__}")
+        logger.error(f"[SLOT_VERIFY]   Сообщение: {str(e)}")
+        logger.error(f"[SLOT_VERIFY]   is_technical_error: {is_technical_error}")
+        logger.error(f"[SLOT_VERIFY]   Полный traceback:", exc_info=True)
         
         # Если это техническая ошибка (429) - вызываем менеджера
         if is_technical_error:
@@ -441,9 +588,11 @@ def _verify_slot_time_availability(
                 }
         
         # При обычной ошибке сбрасываем время
+        logger.info(f"[SLOT_VERIFY]   Обработка обычной ошибки, сбрасываем время")
         updated_booking_state = booking_state.copy()
         updated_booking_state["slot_time"] = None
         updated_booking_state["slot_time_verified"] = None
+        logger.info(f"[SLOT_VERIFY] ===== КОНЕЦ ПРОВЕРКИ (ОШИБКА) =====")
         return {
             "extracted_info": {
                 **state.get("extracted_info", {}),
