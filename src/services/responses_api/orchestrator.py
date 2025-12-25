@@ -86,67 +86,40 @@ class ResponsesOrchestrator:
             
             # Обрезаем историю перед вызовом LLM (оставляем последние 20 сообщений)
             # Используем простую обрезку по количеству сообщений
+            # ВАЖНО: Сохраняем CallManager только если он входит в последние 20 сообщений
             try:
-                from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+                # Разделяем системные и несистемные сообщения
+                system_msgs = [msg for msg in messages if msg.get("role") == "system"]
+                non_system_msgs = [msg for msg in messages if msg.get("role") != "system"]
                 
-                # Преобразуем сообщения в объекты BaseMessage
-                base_messages = []
-                for msg in messages:
-                    role = msg.get("role")
-                    content = msg.get("content", "")
-                    
-                    if role == "user":
-                        base_messages.append(HumanMessage(content=content))
-                    elif role == "assistant":
-                        ai_msg = AIMessage(content=content)
-                        # Добавляем tool_calls если есть
-                        if msg.get("tool_calls"):
-                            ai_msg.tool_calls = msg.get("tool_calls")
-                        base_messages.append(ai_msg)
-                    elif role == "tool":
-                        tool_msg = ToolMessage(
-                            content=content,
-                            tool_call_id=msg.get("tool_call_id", "")
-                        )
-                        base_messages.append(tool_msg)
-                    elif role == "system":
-                        base_messages.append(SystemMessage(content=content))
-                
-                # Простая обрезка: оставляем последние 20 сообщений
-                # Сохраняем системные сообщения и берем последние 20 несистемных
-                if len(base_messages) > 20:
-                    system_msgs = [m for m in base_messages if isinstance(m, SystemMessage)]
-                    non_system_msgs = [m for m in base_messages if not isinstance(m, SystemMessage)]
-                    trimmed_messages = system_msgs + non_system_msgs[-20:]
+                # Берем последние 20 несистемных сообщений
+                if len(non_system_msgs) > 20:
+                    recent_non_system = non_system_msgs[-20:]
                 else:
-                    trimmed_messages = base_messages
+                    recent_non_system = non_system_msgs
                 
-                # Преобразуем обратно в словари для API
-                trimmed_dicts = []
-                for msg in trimmed_messages:
-                    msg_dict = {}
+                # Извлекаем CallManager сообщения только из последних 20
+                call_manager_ids = set()
+                for msg in recent_non_system:
+                    role = msg.get("role")
+                    tool_calls = msg.get("tool_calls", [])
                     
-                    # Обрабатываем разные типы сообщений
-                    if isinstance(msg, HumanMessage):
-                        msg_dict = {"role": "user", "content": msg.content}
-                    elif isinstance(msg, AIMessage):
-                        msg_dict = {"role": "assistant", "content": msg.content}
-                        if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                            msg_dict["tool_calls"] = msg.tool_calls
-                    elif isinstance(msg, ToolMessage):
-                        msg_dict = {
-                            "role": "tool",
-                            "content": msg.content,
-                            "tool_call_id": msg.tool_call_id
-                        }
-                    elif isinstance(msg, SystemMessage):
-                        msg_dict = {"role": "system", "content": msg.content}
-                    
-                    if msg_dict:
-                        trimmed_dicts.append(msg_dict)
+                    if role == "assistant" and tool_calls:
+                        for tc in tool_calls:
+                            if isinstance(tc, dict):
+                                func_dict = tc.get("function", {})
+                                tool_name = func_dict.get("name", "") if func_dict else tc.get("name", "")
+                                call_id = tc.get("id", "")
+                            else:
+                                tool_name = getattr(tc, "name", "")
+                                call_id = getattr(tc, "id", "")
+                            
+                            if tool_name == "CallManager" and call_id:
+                                call_manager_ids.add(call_id)
                 
-                # Используем обрезанные сообщения
-                messages_to_send = trimmed_dicts
+                # Фильтруем: оставляем все сообщения из последних 20, включая CallManager
+                # (CallManager уже входит в recent_non_system, если он там был)
+                messages_to_send = system_msgs + recent_non_system
                 
             except Exception as e:
                 logger.warning(f"Ошибка при обрезке истории: {e}, используем оригинальные сообщения")
@@ -240,7 +213,20 @@ class ResponsesOrchestrator:
                             escalation_result = e.escalation_result
                             logger.info(f"CallManager вызван через инструмент {func_name}")
                             
-                            # Извлекаем новые сообщения до момента вызова CallManager
+                            # ВАЖНО: Добавляем ToolMessage с результатом CallManager в messages
+                            # Это нужно для сохранения в истории LangGraph
+                            call_manager_tool_message = {
+                                "role": "tool",
+                                "tool_call_id": call_id,
+                                "content": json.dumps({
+                                    "call_manager": True,
+                                    "reason": args.get("reason", ""),
+                                    "manager_alert": escalation_result.get("manager_alert", "")
+                                }, ensure_ascii=False)
+                            }
+                            messages.append(call_manager_tool_message)
+                            
+                            # Извлекаем новые сообщения (включая AIMessage с tool_calls и ToolMessage)
                             # Исключаем user_message, так как он уже есть в state["messages"]
                             new_messages = messages[history_length + 1:] if len(messages) > history_length + 1 else []
                             return {
@@ -248,7 +234,7 @@ class ResponsesOrchestrator:
                                 "tool_calls": tool_calls_info,
                                 "call_manager": True,
                                 "manager_alert": escalation_result.get("manager_alert"),
-                                "new_messages": new_messages,  # КРИТИЧНО: Все новые сообщения
+                                "new_messages": new_messages,  # КРИТИЧНО: Все новые сообщения (AIMessage + ToolMessage)
                             }
                         
                         logger.error(f"Ошибка при вызове инструмента {func_name}: {e}", exc_info=True)
