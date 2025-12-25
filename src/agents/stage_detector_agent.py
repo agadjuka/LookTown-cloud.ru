@@ -24,10 +24,11 @@ class StageDetectorAgent(BaseAgent):
     def __init__(self, langgraph_service: LangGraphService):
         instruction = """Read the client's last message and review the conversation history. Determine which agent is most suitable. 
 **AGENT LIST:**
-- booking: main agent, related to service bookings or getting information about services, salon, etc. Always choose when other agents don't fit.
+- booking: main agent, related to service bookings or getting information about services. Always choose when other agents don't fit.
 - cancellation_request: Client asks to cancel an existing booking.
 - reschedule: Client asks to reschedule an existing booking to another date or time. Says they are running late, etc.
 - view_my_booking: Client wants to see their upcoming bookings ("на когда я записан?", "какие у меня записи?").
+- about_salon: Client asks about the salon, addresses, contact information, phone numbers, social networks, or other information about the salon ("расскажите про салон", "где вы находитесь", "как с вами связаться", "ваш адрес", "телефон салона").
 
 Return ONLY one word - the stage name. YOU ARE STRICTLY FORBIDDEN TO RESPOND TO THE CLIENT or send any Json formats.
 Examples of correct work:
@@ -36,6 +37,9 @@ Assistant: booking
 
 User: Отмените мою запись.
 Assistant: cancellation_request
+
+User: Расскажите про салон, где вы находитесь?
+Assistant: about_salon
 
 User: А больно ли делать этот массаж?
 Assistant: booking

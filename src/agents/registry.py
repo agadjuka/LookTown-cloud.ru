@@ -31,6 +31,7 @@ class AgentRegistry:
             'cancel_booking_agent': 'Отмена записи',
             'reschedule_agent': 'Перенесение записи',
             'view_my_booking_agent': 'Просмотр моей записи',
+            'about_salon_agent': 'Информация о салоне',
         }
         
         # Находим все файлы агентов

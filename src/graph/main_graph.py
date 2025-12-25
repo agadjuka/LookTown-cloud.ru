@@ -10,6 +10,7 @@ from ..agents.booking_agent import BookingAgent
 from ..agents.cancel_booking_agent import CancelBookingAgent
 from ..agents.reschedule_agent import RescheduleAgent
 from ..agents.view_my_booking_agent import ViewMyBookingAgent
+from ..agents.about_salon_agent import AboutSalonAgent
 
 from ..services.langgraph_service import LangGraphService
 from ..services.logger_service import logger
@@ -77,6 +78,7 @@ class MainGraph:
                 'cancellation_request': CancelBookingAgent(langgraph_service),
                 'reschedule': RescheduleAgent(langgraph_service),
                 'view_my_booking': ViewMyBookingAgent(langgraph_service),
+                'about_salon': AboutSalonAgent(langgraph_service),
             }
         
         # Используем агентов из кэша
@@ -86,6 +88,7 @@ class MainGraph:
         self.cancel_agent = agents['cancellation_request']
         self.reschedule_agent = agents['reschedule']
         self.view_my_booking_agent = agents['view_my_booking']
+        self.about_salon_agent = agents['about_salon']
         
         # Создаём граф
         self.graph = self._create_graph()
@@ -102,6 +105,7 @@ class MainGraph:
         graph.add_node("handle_cancellation_request", self._handle_cancellation_request)
         graph.add_node("handle_reschedule", self._handle_reschedule)
         graph.add_node("handle_view_my_booking", self._handle_view_my_booking)
+        graph.add_node("handle_about_salon", self._handle_about_salon)
         
         # Добавляем рёбра
         graph.add_edge(START, "detect_stage")
@@ -113,6 +117,7 @@ class MainGraph:
                 "cancellation_request": "handle_cancellation_request",
                 "reschedule": "handle_reschedule",
                 "view_my_booking": "handle_view_my_booking",
+                "about_salon": "handle_about_salon",
                 "end": END
             }
         )
@@ -120,6 +125,7 @@ class MainGraph:
         graph.add_edge("handle_cancellation_request", END)
         graph.add_edge("handle_reschedule", END)
         graph.add_edge("handle_view_my_booking", END)
+        graph.add_edge("handle_about_salon", END)
         return graph
     
     def _detect_stage(self, state: ConversationState) -> ConversationState:
@@ -178,7 +184,7 @@ class MainGraph:
     
     def _route_after_detect(self, state: ConversationState) -> Literal[
         "booking",
-        "cancellation_request", "reschedule", "view_my_booking", "end"
+        "cancellation_request", "reschedule", "view_my_booking", "about_salon", "end"
     ]:
         """Маршрутизация после определения стадии"""
         # Если CallManager был вызван, завершаем граф
@@ -193,7 +199,7 @@ class MainGraph:
         # Валидация стадии
         valid_stages = [
             "booking",
-            "cancellation_request", "reschedule", "view_my_booking"
+            "cancellation_request", "reschedule", "view_my_booking", "about_salon"
         ]
         
         if stage not in valid_stages:
@@ -294,4 +300,15 @@ class MainGraph:
         chat_id = state.get("chat_id")
         
         return self._process_agent_result(self.view_my_booking_agent, message, history, chat_id, state, "ViewMyBookingAgent")
+    
+    def _handle_about_salon(self, state: ConversationState) -> ConversationState:
+        """Обработка запросов о салоне"""
+        logger.info("Обработка запросов о салоне")
+        message = state["message"]
+        # Преобразуем messages в history для обратной совместимости с агентами
+        messages = state.get("messages", [])
+        history = messages_to_history(messages) if messages else None
+        chat_id = state.get("chat_id")
+        
+        return self._process_agent_result(self.about_salon_agent, message, history, chat_id, state, "AboutSalonAgent")
 

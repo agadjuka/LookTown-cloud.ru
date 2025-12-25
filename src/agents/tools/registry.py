@@ -30,7 +30,6 @@ class ToolsRegistry:
             from .cancel_booking.tool import CancelBooking
             from .reschedule_booking.tool import RescheduleBooking
             from .call_manager.tool import CallManager
-            from .about_salon.tool import AboutSalon
             from .masters.tool import Masters
             from .greet.tool import Greet
             from .find_service.tool import FindService
@@ -45,7 +44,6 @@ class ToolsRegistry:
                 CancelBooking,
                 RescheduleBooking,
                 CallManager,
-                AboutSalon,
                 Masters,
                 Greet,
                 FindService,

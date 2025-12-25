@@ -24,7 +24,6 @@ from ...agents.tools import (
     CancelBooking,
     RescheduleBooking,
     CallManager,
-    AboutSalon,
     Masters,
 )
 
@@ -64,7 +63,6 @@ def create_responses_agent() -> ResponsesOrchestrator:
         CancelBooking,
         RescheduleBooking,
         CallManager,
-        AboutSalon,
         Masters,
     ]
     
