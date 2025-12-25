@@ -150,12 +150,13 @@ class FindSlots(BaseModel):
                             # Выводим слоты для каждого альтернативного мастера
                             for master_data in alternative_masters:
                                 alt_master_name = master_data.get('master_name', 'Неизвестный мастер')
+                                alt_master_id = master_data.get('master_id', 'Не указан')
                                 master_results = master_data.get('results', [])
                                 
                                 if not master_results:
                                     continue
                                 
-                                result_lines.append(f"**Мастер {alt_master_name}**:")
+                                result_lines.append(f"**Мастер {alt_master_name}** (ID: {alt_master_id}):")
                                 
                                 for day_result in master_results:
                                     date = day_result['date']
@@ -209,12 +210,13 @@ class FindSlots(BaseModel):
             # Выводим слоты для каждого мастера отдельно
             for master_data in masters:
                 master_name = master_data.get('master_name', 'Неизвестный мастер')
+                master_id = master_data.get('master_id', 'Не указан')
                 master_results = master_data.get('results', [])
                 
                 if not master_results:
                     continue
                 
-                result_lines.append(f"**Мастер {master_name}**:")
+                result_lines.append(f"**Мастер {master_name}** (ID: {master_id}):")
                 
                 for day_result in master_results:
                     date = day_result['date']
