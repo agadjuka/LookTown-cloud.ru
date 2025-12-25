@@ -73,7 +73,12 @@ app = FastAPI(
 async def startup_event():
     """Выполняется при запуске приложения"""
     # Создаем папку logs, если её нет
-    os.makedirs("logs", exist_ok=True)
+    # В контейнере может не быть прав на создание директории - это не критично
+    try:
+        os.makedirs("logs", exist_ok=True)
+    except (PermissionError, OSError) as e:
+        print(f"⚠️ Не удалось создать папку logs: {e}. Продолжаем работу без сохранения логов в файлы.", flush=True)
+        logger.warning(f"Не удалось создать папку logs: {e}. Логи будут только в stdout.")
     
     # Логируем в stdout для гарантированной видимости
     print("╔═══════════════════════════════════════════════════════════", flush=True)

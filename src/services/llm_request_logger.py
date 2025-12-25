@@ -48,7 +48,13 @@ class LLMRequestLogger:
         
         if self.logging_enabled:
             self.logs_dir = Path("logs")
-            self.logs_dir.mkdir(exist_ok=True)
+            try:
+                self.logs_dir.mkdir(exist_ok=True)
+            except (PermissionError, OSError) as e:
+                # В контейнере может не быть прав на создание директории - отключаем логирование в файлы
+                print(f"⚠️ Не удалось создать папку logs: {e}. Логирование в файлы отключено.", flush=True)
+                self.logging_enabled = False
+                self.logs_dir = None
         else:
             self.logs_dir = None
         
