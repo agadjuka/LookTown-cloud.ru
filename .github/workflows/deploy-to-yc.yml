@@ -52,12 +52,13 @@ jobs:
             DEBUG=${{ secrets.DEBUG }}
             TELEGRAM_ADMIN_GROUP_ID=${{ secrets.TELEGRAM_ADMIN_GROUP_ID }}
             TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-            YANDEX_API_KEY_ID=${{ secrets.YANDEX_API_KEY_ID }}
-            YANDEX_API_KEY_SECRET=${{ secrets.YANDEX_API_KEY_SECRET }}
+            YC_ACCESS_KEY_ID=${{ secrets.YC_ACCESS_KEY_ID }}
+            YC_SECRET_ACCESS_KEY=${{ secrets.YC_SECRET_ACCESS_KEY }}
             YANDEX_FOLDER_ID=${{ secrets.YANDEX_FOLDER_ID }}
             YC_BUCKET_NAME=${{ secrets.YC_BUCKET_NAME }}
-            YDB_DATABASE=${{ secrets.YDB_DATABASE }}
-            YDB_ENDPOINT=${{ secrets.YDB_ENDPOINT }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            API_KEY=${{ secrets.API_KEY }}
+            ENABLE_LLM_LOGGING=${{ secrets.ENABLE_LLM_LOGGING }}
 
       - name: Setup Yandex Cloud CLI and jq
         if: always()
