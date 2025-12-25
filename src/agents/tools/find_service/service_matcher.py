@@ -1,7 +1,7 @@
 """
 Модуль для умного поиска услуг с использованием морфологического анализа
 """
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set
 from rapidfuzz import fuzz
 import re
 
@@ -14,6 +14,25 @@ except ImportError:
 
 class ServiceMatcher:
     """Класс для умного сопоставления услуг с поисковыми запросами"""
+    
+    # Важные предлоги, которые НЕ должны фильтроваться (whitelist)
+    IMPORTANT_PREPOSITIONS: Set[str] = {'с', 'без', 'от', 'до', 'для', 'на'}
+    
+    # Пары конфликтов/антонимов: (множество терминов запроса, множество терминов услуги)
+    # Если в запросе есть термины из первого множества, а в услуге - из второго, применяется штраф
+    CONFLICT_PAIRS: List[Tuple[Set[str], Set[str]]] = [
+        # "с покрытием" vs "без покрытия"
+        ({'с', 'покрытие', 'покрытием', 'покрытия'}, {'без'}),
+        ({'без', 'без покрытия'}, {'с', 'покрытие', 'покрытием', 'покрытия'}),
+        # "маникюр" vs "педикюр" (строгий конфликт, если не комбо)
+        ({'маникюр', 'маникюра', 'маникюром'}, {'педикюр', 'педикюра', 'педикюром'}),
+        ({'педикюр', 'педикюра', 'педикюром'}, {'маникюр', 'маникюра', 'маникюром'}),
+        # Дополнительные конфликты для салона красоты
+        ({'окрашивание', 'окраска', 'окрасить'}, {'осветление', 'осветлить', 'блонд'}),
+        ({'осветление', 'осветлить', 'блонд'}, {'окрашивание', 'окраска', 'окрасить'}),
+        ({'короткая', 'короткие', 'короткое'}, {'длинная', 'длинные', 'длинное'}),
+        ({'длинная', 'длинные', 'длинное'}, {'короткая', 'короткие', 'короткое'}),
+    ]
     
     def __init__(self):
         """Инициализация морфологического анализатора"""
@@ -81,6 +100,7 @@ class ServiceMatcher:
     def _get_keywords(self, text: str) -> List[str]:
         """
         Извлекает ключевые слова из текста (исключая служебные слова)
+        ВАЖНО: Сохраняет важные предлоги из whitelist, даже если они короткие
         
         Args:
             text: Текст для обработки
@@ -89,8 +109,9 @@ class ServiceMatcher:
             Список ключевых слов
         """
         # Служебные слова, которые не важны для поиска
+        # НО: важные предлоги (IMPORTANT_PREPOSITIONS) НЕ включаем в стоп-слова
         stop_words = {
-            "на", "для", "по", "с", "в", "к", "от", "до", "из", "у", "о", "об",
+            "по", "в", "к", "из", "у", "о", "об",
             "и", "или", "а", "но", "же", "ли", "бы", "то", "как", "что",
             "услуги", "услуга", "услуг", "услугу", "услуге", "услугой",
             "хочу", "нужен", "нужна", "нужно", "нужны",
@@ -99,8 +120,49 @@ class ServiceMatcher:
         
         normalized = self._normalize_text(text)
         words = normalized.split()
-        keywords = [w for w in words if w not in stop_words and len(w) > 2]
+        
+        # Фильтруем слова: сохраняем важные предлоги и слова длиннее 2 символов
+        keywords = [
+            w for w in words 
+            if (w in self.IMPORTANT_PREPOSITIONS or (w not in stop_words and len(w) > 2))
+        ]
         return keywords
+    
+    def _check_conflicts(self, query_text: str, service_text: str) -> float:
+        """
+        Проверяет наличие конфликтов/антонимов между запросом и услугой
+        
+        Args:
+            query_text: Текст запроса
+            service_text: Текст услуги
+            
+        Returns:
+            Штраф (отрицательное число) или 0, если конфликтов нет
+        """
+        # Нормализуем и лемматизируем тексты для проверки
+        normalized_query = self._normalize_text(query_text)
+        normalized_service = self._normalize_text(service_text)
+        lemmatized_query = self._lemmatize_text(query_text)
+        lemmatized_service = self._lemmatize_text(service_text)
+        
+        # Создаем множества всех слов (нормализованных и лемматизированных)
+        query_words = set(normalized_query.split()) | set(lemmatized_query.split())
+        service_words = set(normalized_service.split()) | set(lemmatized_service.split())
+        
+        # Проверяем каждую пару конфликтов
+        for query_terms, service_terms in self.CONFLICT_PAIRS:
+            # Проверяем, есть ли в запросе термины из первого множества
+            query_has_terms = bool(query_terms & query_words)
+            
+            # Проверяем, есть ли в услуге термины из второго множества
+            service_has_terms = bool(service_terms & service_words)
+            
+            # Если конфликт обнаружен - применяем штраф
+            if query_has_terms and service_has_terms:
+                # Значительный штраф: уменьшаем релевантность на 50% или вычитаем 50 баллов
+                return -50.0
+        
+        return 0.0
     
     def calculate_relevance(self, service_title: str, search_query: str) -> float:
         """
@@ -132,7 +194,7 @@ class ServiceMatcher:
         if lemmatized_title == lemmatized_query:
             return 95.0
         
-        # Извлекаем ключевые слова
+        # Извлекаем ключевые слова (теперь с сохранением важных предлогов)
         query_keywords = self._get_keywords(search_query)
         title_keywords = self._get_keywords(service_title)
         
@@ -213,6 +275,10 @@ class ServiceMatcher:
             # Название содержится в запросе
             base_relevance = max(base_relevance, 40.0)
         
+        # ПРИМЕНЯЕМ ШТРАФ ЗА КОНФЛИКТЫ/АНТОНИМЫ (после базового скоринга, но до финальной проверки)
+        conflict_penalty = self._check_conflicts(search_query, service_title)
+        base_relevance = max(0.0, base_relevance + conflict_penalty)
+        
         # Для коротких запросов (одно слово) делаем более мягкую проверку
         is_single_word_query = len(query_keywords_set) == 1
         
@@ -245,11 +311,12 @@ class ServiceMatcher:
     ) -> List[Tuple[Dict, float]]:
         """
         Находит наиболее релевантные услуги для поискового запроса
+        Использует адаптивный порог для фильтрации результатов
         
         Args:
             services: Список услуг (словари с ключом 'title' или 'name')
             search_query: Поисковый запрос
-            min_relevance: Минимальная релевантность для включения в результат
+            min_relevance: Минимальная релевантность для включения в результат (базовый порог)
             max_results: Максимальное количество результатов
             
         Returns:
@@ -257,6 +324,7 @@ class ServiceMatcher:
         """
         results = []
         
+        # Первый проход: вычисляем релевантность для всех услуг
         for service in services:
             # Получаем название услуги
             service_title = service.get('title', '') or service.get('name', '')
@@ -266,11 +334,25 @@ class ServiceMatcher:
             # Вычисляем релевантность
             relevance = self.calculate_relevance(service_title, search_query)
             
+            # Применяем базовый порог
             if relevance >= min_relevance:
                 results.append((service, relevance))
         
         # Сортируем по релевантности (от большей к меньшей)
         results.sort(key=lambda x: x[1], reverse=True)
+        
+        # АДАПТИВНЫЙ ПОРОГ: если есть результаты и лучший результат высокий
+        if results:
+            best_score = results[0][1]
+            
+            # Если лучший результат очень хороший (>70), применяем динамический фильтр
+            if best_score > 70.0:
+                # Игнорируем результаты, которые значительно хуже лучшего (разница >15 баллов)
+                adaptive_threshold = best_score - 15.0
+                results = [
+                    (service, score) for service, score in results 
+                    if score >= adaptive_threshold
+                ]
         
         # Возвращаем топ результатов
         return results[:max_results]

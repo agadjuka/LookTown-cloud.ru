@@ -381,18 +381,22 @@ async def create_booking_logic(
         formatted_datetime = format_datetime_russian(datetime)
         
         # 9. Формируем успешный ответ с полной информацией
-        message_parts = [
+        message_lines = [
             f"{client_name}, Вы записаны на услугу:",
             f"{service_title}",
-            f"{formatted_datetime}",
-            f"к мастеру {master_name_result}"
+            f"",
+            f"Дата и время: {formatted_datetime}",
+            f"Мастер: {master_name_result}"
         ]
         
         if price is not None:
-            message_parts.append(f"Цена: {price} руб.")
+            message_lines.append(f"Цена: {price} руб.")
         
-        message = ". ".join(message_parts) + " Будем вас ждать!"
-        message += "\n\n((Отправь клиент именно этот текст))"
+        message_lines.append("")
+        message_lines.append("Будем вас ждать! 🌻")
+        message_lines.append("\n((Отправь клиент именно этот текст))")
+        
+        message = "\n".join(message_lines)
         
         result = {
             "success": True,
