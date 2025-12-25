@@ -28,7 +28,7 @@ class StageDetectorAgent(BaseAgent):
 - cancellation_request: Client asks to cancel an existing booking.
 - reschedule: Client asks to reschedule an existing booking to another date or time. Says they are running late, etc.
 - view_my_booking: Client wants to see their upcoming bookings ("на когда я записан?", "какие у меня записи?").
-- about_salon: Client asks about the salon, addresses, contact information, phone numbers, social networks, or other information about the salon ("расскажите про салон", "где вы находитесь", "как с вами связаться", "ваш адрес", "телефон салона").
+- about_salon: Client asks about addresses, contact information, phone numbers, social networks, of salon ("расскажите про салон", "где вы находитесь", "как с вами связаться", "ваш адрес", "телефон салона"). 
 
 Return ONLY one word - the stage name. YOU ARE STRICTLY FORBIDDEN TO RESPOND TO THE CLIENT or send any Json formats.
 The main task is to understand which agent the most recent message belongs to!!!
