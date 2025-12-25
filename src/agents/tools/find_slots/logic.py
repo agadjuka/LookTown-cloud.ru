@@ -252,8 +252,13 @@ async def find_slots_by_period(
     try:
         service_details = await yclients_service.get_service_details(service_id)
     except Exception as e:
+        error_str = str(e).lower()
+        # Проверяем, является ли это технической ошибкой (429)
+        is_technical_error = "429" in error_str or "too many requests" in error_str
         return {
-            "error": f"Ошибка при получении информации об услуге: {str(e)}"
+            "error": f"Ошибка при получении информации об услуге: {str(e)}",
+            "is_technical_error": is_technical_error,
+            "error_status": 429 if is_technical_error else None
         }
     
     service_name = service_details.name or service_details.title
@@ -480,8 +485,13 @@ async def find_alternative_masters_slots(
     try:
         service_details = await yclients_service.get_service_details(service_id)
     except Exception as e:
+        error_str = str(e).lower()
+        # Проверяем, является ли это технической ошибкой (429)
+        is_technical_error = "429" in error_str or "too many requests" in error_str
         return {
-            "error": f"Ошибка при получении информации об услуге: {str(e)}"
+            "error": f"Ошибка при получении информации об услуге: {str(e)}",
+            "is_technical_error": is_technical_error,
+            "error_status": 429 if is_technical_error else None
         }
     
     service_name = service_details.name or service_details.title

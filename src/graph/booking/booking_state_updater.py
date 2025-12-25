@@ -77,7 +77,10 @@ def merge_booking_state(
     Логика обновления:
     1. Если LLM вернула None для service_id (смена темы) - жесткий сброс связанных полей
     2. Если slot_time имеет время 00:00 - не устанавливаем slot_time (это дата без времени)
-    3. Обычное обновление остальных полей (только не-None значения)
+    3. Если slot_time сбрасывается явно (None) - сбрасываем и slot_time_verified
+    4. Если master_id сбрасывается явно (None) - сбрасываем и master_name
+    5. Если master_name сбрасывается явно (None) - удаляем master_name
+    6. Обычное обновление остальных полей (только не-None значения)
     
     Args:
         current_state: Текущее состояние бронирования
@@ -108,6 +111,15 @@ def merge_booking_state(
     # Если slot_time сбрасывается явно, сбрасываем и slot_time_verified
     if "slot_time" in extracted_data and extracted_data["slot_time"] is None:
         current_details["slot_time_verified"] = None
+    
+    # Если master_id сбрасывается явно, сбрасываем и master_name
+    if "master_id" in extracted_data and extracted_data["master_id"] is None:
+        current_details["master_id"] = None
+        current_details.pop("master_name", None)  # Удаляем, если есть
+    
+    # Если master_name сбрасывается явно (независимо от master_id)
+    if "master_name" in extracted_data and extracted_data["master_name"] is None:
+        current_details.pop("master_name", None)  # Удаляем, если есть
     
     # 2. Обычное обновление остальных полей
     for key, value in extracted_data.items():

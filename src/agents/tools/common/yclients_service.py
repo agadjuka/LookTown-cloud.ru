@@ -8,6 +8,7 @@ import json
 import os
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field
+from .api_retry import retry_with_backoff
 
 
 class Master(BaseModel):
@@ -87,13 +88,22 @@ class YclientsService:
             "Content-Type": "application/json"
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                response_data = await response.json()
-                # API возвращает данные в поле 'data'
-                service_data = response_data.get('data', response_data)
-                return ServiceDetails(**service_data)
+        async def _fetch_service_details():
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers) as response:
+                    response.raise_for_status()
+                    response_data = await response.json()
+                    # API возвращает данные в поле 'data'
+                    service_data = response_data.get('data', response_data)
+                    return ServiceDetails(**service_data)
+        
+        return await retry_with_backoff(
+            _fetch_service_details,
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name=f"get_service_details(service_id={service_id})"
+        )
     
     async def get_book_times(
         self, 
@@ -122,22 +132,31 @@ class YclientsService:
             "service_ids": service_id
         }
         
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, params=params) as response:
-                response.raise_for_status()
-                response_data = await response.json()
-                
-                # API может возвращать данные в разных форматах:
-                # 1. Массив напрямую: [{...}]
-                # 2. Объект с полем 'data': {"success": true, "data": [...]}
-                if isinstance(response_data, list):
-                    book_data = response_data
-                elif isinstance(response_data, dict) and 'data' in response_data:
-                    book_data = response_data['data']
-                else:
-                    book_data = response_data if isinstance(response_data, list) else []
-                
-                return BookTimeResponse(data=book_data if isinstance(book_data, list) else [])
+        async def _fetch_book_times():
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=params) as response:
+                    response.raise_for_status()
+                    response_data = await response.json()
+                    
+                    # API может возвращать данные в разных форматах:
+                    # 1. Массив напрямую: [{...}]
+                    # 2. Объект с полем 'data': {"success": true, "data": [...]}
+                    if isinstance(response_data, list):
+                        book_data = response_data
+                    elif isinstance(response_data, dict) and 'data' in response_data:
+                        book_data = response_data['data']
+                    else:
+                        book_data = response_data if isinstance(response_data, list) else []
+                    
+                    return BookTimeResponse(data=book_data if isinstance(book_data, list) else [])
+        
+        return await retry_with_backoff(
+            _fetch_book_times,
+            max_retries=3,
+            initial_delay=1.0,
+            backoff_factor=2.0,
+            operation_name=f"get_book_times(master_id={master_id}, date={date}, service_id={service_id})"
+        )
     
     async def get_staff_list(self) -> List[Dict[str, Any]]:
         """

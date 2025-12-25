@@ -238,8 +238,58 @@ def _verify_slot_time_availability(
         )
         
         if result.get('error'):
-            logger.warning(f"Ошибка при проверке доступности времени: {result['error']}")
-            # Если ошибка - сбрасываем время и предлагаем выбрать другое
+            error_message = result['error']
+            is_technical_error = result.get('is_technical_error', False)
+            
+            logger.warning(f"Ошибка при проверке доступности времени: {error_message}")
+            
+            # Если это техническая ошибка (429 после всех retry) - вызываем менеджера
+            if is_technical_error:
+                logger.error(f"Техническая ошибка API (429) при проверке доступности времени. Вызываем менеджера.")
+                try:
+                    from ....services.escalation_service import EscalationService
+                    
+                    chat_id = state.get("chat_id")
+                    if not chat_id:
+                        chat_id = "unknown"
+                    
+                    # Формируем отчет для менеджера
+                    manager_report = f"Отчет для менеджера:\n"
+                    manager_report += f"Причина: Техническая ошибка API при проверке доступности времени\n"
+                    manager_report += f"Ошибка: {error_message}\n"
+                    manager_report += f"Попытка проверки времени: {slot_time}\n"
+                    manager_report += f"Service ID: {service_id}\n"
+                    if master_name:
+                        manager_report += f"Мастер: {master_name}\n"
+                    
+                    # Используем EscalationService для формирования ответа
+                    escalation_service = EscalationService()
+                    call_manager_text = f"[CALL_MANAGER]\n{manager_report}"
+                    
+                    # Обрабатываем через EscalationService
+                    escalation_result = escalation_service.handle(call_manager_text, str(chat_id))
+                    
+                    # Возвращаем результат с вызовом менеджера
+                    return {
+                        "extracted_info": state.get("extracted_info", {}),
+                        "answer": escalation_result.get("user_message", ""),
+                        "manager_alert": escalation_result.get("manager_alert")
+                    }
+                except Exception as escalation_error:
+                    logger.error(f"Ошибка при вызове менеджера: {escalation_error}", exc_info=True)
+                    # Если не удалось вызвать менеджера, возвращаем общее сообщение об ошибке
+                    updated_booking_state = booking_state.copy()
+                    updated_booking_state["slot_time"] = None
+                    updated_booking_state["slot_time_verified"] = None
+                    return {
+                        "extracted_info": {
+                            **state.get("extracted_info", {}),
+                            "booking": updated_booking_state
+                        },
+                        "answer": "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
+                    }
+            
+            # Если это не техническая ошибка - обычная обработка (время недоступно)
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
             updated_booking_state["slot_time_verified"] = None
@@ -338,8 +388,59 @@ def _verify_slot_time_availability(
             }
             
     except Exception as e:
+        error_str = str(e).lower()
+        is_technical_error = "429" in error_str or "too many requests" in error_str
+        
         logger.error(f"Ошибка при проверке доступности времени: {e}", exc_info=True)
-        # При ошибке сбрасываем время
+        
+        # Если это техническая ошибка (429) - вызываем менеджера
+        if is_technical_error:
+            logger.error(f"Техническая ошибка API (429) при проверке доступности времени. Вызываем менеджера.")
+            try:
+                from ....services.escalation_service import EscalationService
+                
+                chat_id = state.get("chat_id")
+                if not chat_id:
+                    chat_id = "unknown"
+                
+                # Формируем отчет для менеджера
+                manager_report = f"Отчет для менеджера:\n"
+                manager_report += f"Причина: Техническая ошибка API при проверке доступности времени\n"
+                manager_report += f"Ошибка: {str(e)}\n"
+                manager_report += f"Попытка проверки времени: {slot_time}\n"
+                manager_report += f"Service ID: {service_id}\n"
+                master_name = booking_state.get("master_name")
+                if master_name:
+                    manager_report += f"Мастер: {master_name}\n"
+                
+                # Используем EscalationService для формирования ответа
+                escalation_service = EscalationService()
+                call_manager_text = f"[CALL_MANAGER]\n{manager_report}"
+                
+                # Обрабатываем через EscalationService
+                escalation_result = escalation_service.handle(call_manager_text, str(chat_id))
+                
+                # Возвращаем результат с вызовом менеджера
+                return {
+                    "extracted_info": state.get("extracted_info", {}),
+                    "answer": escalation_result.get("user_message", ""),
+                    "manager_alert": escalation_result.get("manager_alert")
+                }
+            except Exception as escalation_error:
+                logger.error(f"Ошибка при вызове менеджера: {escalation_error}", exc_info=True)
+                # Если не удалось вызвать менеджера, возвращаем общее сообщение об ошибке
+                updated_booking_state = booking_state.copy()
+                updated_booking_state["slot_time"] = None
+                updated_booking_state["slot_time_verified"] = None
+                return {
+                    "extracted_info": {
+                        **state.get("extracted_info", {}),
+                        "booking": updated_booking_state
+                    },
+                    "answer": "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
+                }
+        
+        # При обычной ошибке сбрасываем время
         updated_booking_state = booking_state.copy()
         updated_booking_state["slot_time"] = None
         updated_booking_state["slot_time_verified"] = None
