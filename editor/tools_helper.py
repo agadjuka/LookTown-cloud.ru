@@ -169,23 +169,28 @@ def execute_tool(tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
         tool_instance = tool_class(**args)
         
         # Выполняем инструмент через метод process
-        # Создаем заглушку для Thread
-        class MockThread:
-            """Заглушка для Thread при тестировании инструментов"""
-            def __init__(self):
-                self.id = "test_thread"
-                self.chat_id = None
-            
-            def get_messages(self):
-                return []
-        
+        # Используем наш класс Thread
         try:
-            from yandex_cloud_ml_sdk._threads.thread import Thread
-            try:
-                thread = Thread()
-            except Exception:
-                thread = MockThread()
+            import sys
+            import os
+            # Добавляем путь к src для импорта
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if project_root not in sys.path:
+                sys.path.insert(0, project_root)
+            
+            from src.common.thread import Thread
+            thread = Thread(thread_id="test_thread", chat_id=None, messages=[])
         except ImportError:
+            # Fallback на простую заглушку, если импорт не удался
+            class MockThread:
+                """Заглушка для Thread при тестировании инструментов"""
+                def __init__(self):
+                    self.id = "test_thread"
+                    self.chat_id = None
+                
+                def get_messages(self):
+                    return []
+            
             thread = MockThread()
         
         result = tool_instance.process(thread)

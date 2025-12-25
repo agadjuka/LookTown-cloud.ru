@@ -3,7 +3,7 @@
 """
 import asyncio
 from pydantic import BaseModel, Field
-from yandex_cloud_ml_sdk._threads.thread import Thread
+from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
 from .logic import view_service_logic

@@ -2,7 +2,7 @@
 Инструмент для приветствия клиента
 """
 from pydantic import BaseModel
-from yandex_cloud_ml_sdk._threads.thread import Thread
+from ....common.thread import Thread
 
 try:
     from ....services.logger_service import logger

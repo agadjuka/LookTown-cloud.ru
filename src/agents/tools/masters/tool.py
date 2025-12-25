@@ -2,7 +2,7 @@
 Инструмент для получения информации о мастерах
 """
 from pydantic import BaseModel
-from yandex_cloud_ml_sdk._threads.thread import Thread
+from ....common.thread import Thread
 
 from ..common.masters_data_loader import _masters_data_loader
 from .formatter import MastersFormatter

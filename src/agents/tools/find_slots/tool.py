@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, Field
-from yandex_cloud_ml_sdk._threads.thread import Thread
+from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
 from .logic import find_slots_by_period, _is_generic_master_term, find_alternative_masters_slots

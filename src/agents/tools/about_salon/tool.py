@@ -3,7 +3,7 @@
 """
 import json
 from pydantic import BaseModel
-from yandex_cloud_ml_sdk._threads.thread import Thread
+from ....common.thread import Thread
 
 from ..common.about_salon_data_loader import _about_salon_data_loader
 

@@ -43,41 +43,20 @@ class ResponsesToolsRegistry:
                 # Создаём экземпляр инструмента с переданными параметрами
                 tool_instance = tool_class(**kwargs)
                 
-                # Создаём минимальный mock Thread для совместимости
-                # Большинство инструментов не используют thread напрямую
-                class MockThread:
-                    """Минимальный mock Thread для совместимости с Responses API"""
-                    def __init__(self, conversation_history=None, chat_id=None):
-                        self.id = None
-                        self.chat_id = chat_id
-                        self._conversation_history = conversation_history or []
-                    
-                    def __iter__(self):
-                        """Для совместимости с инструментами, которые итерируют thread"""
-                        # Возвращаем mock-объекты сообщений из conversation_history
-                        class MockMessage:
-                            def __init__(self, role, content):
-                                self.author = type('Author', (), {'role': role.upper()})()
-                                self.text = content
-                                self.role = role
-                                self.content = content
-                        
-                        messages = []
-                        for msg in self._conversation_history:
-                            if isinstance(msg, dict):
-                                role = msg.get("role", "user")
-                                content = msg.get("content", "")
-                                messages.append(MockMessage(role, content))
-                        
-                        return iter(messages)
-                
                 # Получаем conversation_history и chat_id из kwargs, если переданы
                 conversation_history = kwargs.pop('_conversation_history', None)
                 chat_id = kwargs.pop('_chat_id', None)
-                mock_thread = MockThread(conversation_history=conversation_history, chat_id=chat_id)
+                
+                # Используем наш класс Thread вместо mock
+                from ...common.thread import Thread
+                thread = Thread(
+                    thread_id=str(chat_id) if chat_id else None,
+                    chat_id=str(chat_id) if chat_id else None,
+                    messages=conversation_history or []
+                )
                 
                 # Вызываем process
-                result = tool_instance.process(mock_thread)
+                result = tool_instance.process(thread)
                 return result
             except Exception as e:
                 # Пробрасываем CallManagerException дальше
