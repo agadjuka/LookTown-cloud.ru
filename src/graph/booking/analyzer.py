@@ -74,6 +74,7 @@ Examples:
 - "Запиши на завтра в 10" -> {{"slot_time": "2024-12-21 10:00"}}
 
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
+If you see "Error" or "System Error" in tool results, immediately call the manager.
 ."""
 
     # Подготавливаем историю для контекста

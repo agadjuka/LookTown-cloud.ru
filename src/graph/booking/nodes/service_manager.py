@@ -80,6 +80,7 @@ IMPORTANT:
 - If the client decided to change the service or master - start over (excluding greeting) according to instructions - call tools again.
 - NEVER USE YOUR KNOWLEDGE, ONLY USE INFO FROM TOOLS.
 If you encounter a system error, don't know the answer to a question, or the client is dissatisfied - call the manager (if you already called the manager, don't call it again, continue the conversation).
+If you see "Error" or "System Error" in tool results, immediately call the manager.
 """
     
     return prompt
