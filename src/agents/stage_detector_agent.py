@@ -31,18 +31,8 @@ class StageDetectorAgent(BaseAgent):
 - about_salon: Client asks about the salon, addresses, contact information, phone numbers, social networks, or other information about the salon ("расскажите про салон", "где вы находитесь", "как с вами связаться", "ваш адрес", "телефон салона").
 
 Return ONLY one word - the stage name. YOU ARE STRICTLY FORBIDDEN TO RESPOND TO THE CLIENT or send any Json formats.
-Examples of correct work:
-User: Хочу записаться на 5 вечера.
-Assistant: booking
+The main task is to understand which agent the most recent message belongs to!!!
 
-User: Отмените мою запись.
-Assistant: cancellation_request
-
-User: Расскажите про салон, где вы находитесь?
-Assistant: about_salon
-
-User: А больно ли делать этот массаж?
-Assistant: booking
 """
         
         super().__init__(

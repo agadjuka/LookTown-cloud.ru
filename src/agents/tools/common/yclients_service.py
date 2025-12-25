@@ -239,9 +239,17 @@ class YclientsService:
                         data = response_text
                     return {"success": True, "data": data}
                 else:
+                    # Пытаемся распарсить JSON ответ при ошибке
+                    error_data = None
+                    try:
+                        error_data = json.loads(response_text)
+                    except json.JSONDecodeError:
+                        pass
+                    
                     return {
                         "success": False,
                         "error": response_text[:1000],
+                        "error_data": error_data,  # Добавляем распарсенный JSON
                         "status_code": response.status
                     }
     

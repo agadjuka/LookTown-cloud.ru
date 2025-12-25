@@ -286,7 +286,18 @@ async def create_booking_logic(
         )
         
         if not booking_response.get("success"):
+            # Пытаемся извлечь структурированную информацию об ошибке
+            error_data = booking_response.get("error_data")
             error_msg = booking_response.get("error", "Неизвестная ошибка")
+            
+            # Если есть распарсенный JSON, извлекаем информацию из meta
+            if error_data and isinstance(error_data, dict):
+                meta = error_data.get("meta", {})
+                if isinstance(meta, dict):
+                    meta_message = meta.get("message", "")
+                    if meta_message:
+                        error_msg = meta_message
+            
             return {
                 "success": False,
                 "message": f"Ошибка при создании записи: {error_msg}",
@@ -380,7 +391,7 @@ async def create_booking_logic(
         
         formatted_datetime = format_datetime_russian(datetime)
         
-        # 9. Формируем успешный ответ с полной информацией
+        # 7. Формируем успешный ответ с полной информацией
         message_lines = [
             f"{client_name}, Вы записаны на услугу:",
             f"**{service_title}**",
