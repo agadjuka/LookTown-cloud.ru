@@ -8,6 +8,7 @@ from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
 from ..common.services_data_loader import _data_loader
+from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import find_service_logic, find_master_by_service_logic
 from .category_matcher import find_category_by_query
 from .category_enricher import enrich_services_with_categories
@@ -160,7 +161,7 @@ class FindService(BaseModel):
             try:
                 yclients_service = YclientsService()
             except ValueError as e:
-                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
+                return format_system_error(e, "поиск услуг")
             
             # Если указано имя мастера, используем логику поиска мастера по услуге
             if self.master_name:
@@ -272,10 +273,11 @@ class FindService(BaseModel):
             
             return "\n".join(result_lines)
             
-        except ValueError as e:
-            logger.error(f"Ошибка конфигурации FindService: {e}")
-            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            logger.error(f"Ошибка при поиске услуг: {e}", exc_info=True)
-            return f"Ошибка при поиске услуг: {str(e)}"
+            if is_technical_error(e):
+                logger.error(f"Техническая ошибка при поиске услуг: {e}", exc_info=True)
+                return format_system_error(e, "поиск услуг")
+            else:
+                logger.error(f"Неожиданная ошибка при поиске услуг: {e}", exc_info=True)
+                return format_system_error(e, "поиск услуг")
 

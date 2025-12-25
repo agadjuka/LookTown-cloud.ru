@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.services_data_loader import _data_loader
+from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 
 try:
     from ....services.logger_service import logger
@@ -95,6 +96,7 @@ class GetServices(BaseModel):
         
         return "\n".join(result_lines)
     
+    @handle_technical_errors("получение списка услуг")
     def process(self, thread: Thread) -> str:
         """
         Получение списка услуг указанной категории
@@ -134,12 +136,10 @@ class GetServices(BaseModel):
                 # Для остальных категорий - обычный список
                 return self._format_services_simple(category_name, services)
             
-        except FileNotFoundError as e:
-            logger.error(f"Файл с услугами не найден: {e}")
-            return "Файл с данными об услугах не найден"
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка парсинга JSON: {e}")
-            return "Ошибка при чтении данных об услугах"
         except Exception as e:
-            logger.error(f"Ошибка при получении услуг: {e}")
-            return f"Ошибка при получении услуг: {str(e)}"
+            if is_technical_error(e):
+                logger.error(f"Техническая ошибка при получении услуг: {e}", exc_info=True)
+                return format_system_error(e, "получение списка услуг")
+            else:
+                logger.error(f"Неожиданная ошибка при получении услуг: {e}", exc_info=True)
+                return format_system_error(e, "получение списка услуг")

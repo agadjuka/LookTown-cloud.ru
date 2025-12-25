@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from ....common.thread import Thread
 
 from ..common.about_salon_data_loader import _about_salon_data_loader
+from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 
 try:
     from ....services.logger_service import logger
@@ -23,6 +24,7 @@ class AboutSalon(BaseModel):
     Use when the client asks "расскажите о салоне", "что такое LookTown", "где вы находитесь" or similar questions about the salon.
     """
     
+    @handle_technical_errors("получение информации о салоне")
     def process(self, thread: Thread) -> str:
         """
         Получение информации о салоне
@@ -43,13 +45,11 @@ class AboutSalon(BaseModel):
             
             return text
             
-        except FileNotFoundError as e:
-            logger.error(f"Файл с информацией о салоне не найден: {e}")
-            return "Файл с информацией о салоне не найден"
-        except json.JSONDecodeError as e:
-            logger.error(f"Ошибка парсинга JSON: {e}")
-            return "Ошибка при чтении информации о салоне"
         except Exception as e:
-            logger.error(f"Ошибка при получении информации о салоне: {e}")
-            return f"Ошибка при получении информации о салоне: {str(e)}"
+            if is_technical_error(e):
+                logger.error(f"Техническая ошибка при получении информации о салоне: {e}", exc_info=True)
+                return format_system_error(e, "получение информации о салоне")
+            else:
+                logger.error(f"Неожиданная ошибка при получении информации о салоне: {e}", exc_info=True)
+                return format_system_error(e, "получение информации о салоне")
 

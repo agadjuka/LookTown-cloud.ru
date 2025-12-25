@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
+from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import view_service_logic
 
 try:
@@ -27,6 +28,7 @@ class ViewService(BaseModel):
         description="Service ID. Get from FindService"
     )
     
+    @handle_technical_errors("получение информации об услуге")
     def process(self, thread: Thread) -> str:
         """
         Получение детальной информации об услуге
@@ -35,10 +37,9 @@ class ViewService(BaseModel):
             Отформатированная информация об услуге
         """
         try:
-            try:
-                yclients_service = YclientsService()
-            except ValueError as e:
-                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
+            yclients_service = YclientsService()
+        except ValueError as e:
+            return format_system_error(e, "получение информации об услуге")
             
             result = asyncio.run(
                 view_service_logic(
@@ -103,10 +104,11 @@ class ViewService(BaseModel):
             
             return "\n".join(result_lines)
             
-        except ValueError as e:
-            logger.error(f"Ошибка конфигурации ViewService: {e}")
-            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            logger.error(f"Ошибка при получении информации об услуге: {e}", exc_info=True)
-            return f"Ошибка при получении информации об услуге: {str(e)}"
+            if is_technical_error(e):
+                logger.error(f"Техническая ошибка при получении информации об услуге: {e}", exc_info=True)
+                return format_system_error(e, "получение информации об услуге")
+            else:
+                logger.error(f"Неожиданная ошибка при получении информации об услуге: {e}", exc_info=True)
+                return format_system_error(e, "получение информации об услуге")
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from ....common.thread import Thread
 
 from ..common.yclients_service import YclientsService
+from ..common.error_handler import handle_technical_errors, format_system_error, is_technical_error
 from .logic import get_client_records_logic
 
 try:
@@ -183,6 +184,7 @@ class GetClientRecords(BaseModel):
         description="Client phone number"
     )
     
+    @handle_technical_errors("получение записей клиента")
     def process(self, thread: Thread) -> str:
         """
         Поиск клиента по телефону и получение всех его записей
@@ -191,10 +193,9 @@ class GetClientRecords(BaseModel):
             Отформатированная информация о клиенте и его записях
         """
         try:
-            try:
-                yclients_service = YclientsService()
-            except ValueError as e:
-                return f"Ошибка конфигурации: {str(e)}. Проверьте переменные окружения AUTH_HEADER/AuthenticationToken и COMPANY_ID/CompanyID."
+            yclients_service = YclientsService()
+        except ValueError as e:
+            return format_system_error(e, "получение записей клиента")
             
             result = asyncio.run(
                 get_client_records_logic(
@@ -280,10 +281,11 @@ class GetClientRecords(BaseModel):
             
             return result_text
             
-        except ValueError as e:
-            logger.error(f"Ошибка конфигурации GetClientRecords: {e}")
-            return f"Ошибка конфигурации: {str(e)}"
         except Exception as e:
-            logger.error(f"Ошибка при получении записей клиента: {e}", exc_info=True)
-            return f"Ошибка при получении записей клиента: {str(e)}"
+            if is_technical_error(e):
+                logger.error(f"Техническая ошибка при получении записей клиента: {e}", exc_info=True)
+                return format_system_error(e, "получение записей клиента")
+            else:
+                logger.error(f"Неожиданная ошибка при получении записей клиента: {e}", exc_info=True)
+                return format_system_error(e, "получение записей клиента")
 

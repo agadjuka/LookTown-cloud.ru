@@ -3,6 +3,7 @@
 """
 from typing import Dict, Any
 from ..common.yclients_service import YclientsService
+from ..common.error_handler import APIError
 
 
 async def cancel_booking_logic(
@@ -33,6 +34,13 @@ async def cancel_booking_logic(
         
         # Отменяем запись
         result = await yclients_service.cancel_record(record_id)
+        
+        # Если есть status_code от API - это техническая ошибка
+        if not result.get("success") and result.get("status_code"):
+            raise APIError(
+                status_code=result.get("status_code"),
+                message=result.get("error", "Ошибка при отмене записи")
+            )
         
         return result
         

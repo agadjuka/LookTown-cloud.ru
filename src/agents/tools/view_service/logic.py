@@ -68,12 +68,9 @@ async def view_service_logic(
         }
         
     except aiohttp.ClientResponseError as e:
-        return {
-            "success": False,
-            "error": "yclients_http_error",
-            "status": e.status,
-            "message": f"Ошибка HTTP {e.status}: {e.message}"
-        }
+        # Выбрасываем APIError для обработки как технической ошибки
+        from ..common.error_handler import APIError
+        raise APIError(status_code=e.status, message=f"Ошибка HTTP {e.status}: {e.message}")
     except Exception as e:
         return {
             "success": False,

@@ -428,7 +428,8 @@ class YclientsService:
                         "success": False,
                         "message": None,
                         "data": None,
-                        "error": f"Ошибка при отмене записи: HTTP {response.status}. {response_text[:500]}"
+                        "error": f"Ошибка при отмене записи: HTTP {response.status}. {response_text[:500]}",
+                        "status_code": response.status
                     }
     
     async def reschedule_record(
@@ -498,27 +499,19 @@ class YclientsService:
                     }
                 else:
                     # Обработка типовых ошибок
+                    error_message = f"Ошибка при переносе записи: HTTP {response.status}. {response_text[:500]}"
                     if response.status == 409:
-                        return {
-                            "success": False,
-                            "message": None,
-                            "data": None,
-                            "error": "Слот занят или нерабочее время. Выберите другое время."
-                        }
+                        error_message = "Слот занят или нерабочее время. Выберите другое время."
                     elif response.status == 422:
-                        return {
-                            "success": False,
-                            "message": None,
-                            "data": None,
-                            "error": "Ошибка валидации данных. Проверьте правильность всех параметров."
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "message": None,
-                            "data": None,
-                            "error": f"Ошибка при переносе записи: HTTP {response.status}. {response_text[:500]}"
-                        }
+                        error_message = "Ошибка валидации данных. Проверьте правильность всех параметров."
+                    
+                    return {
+                        "success": False,
+                        "message": None,
+                        "data": None,
+                        "error": error_message,
+                        "status_code": response.status
+                    }
     
     async def get_all_services(self) -> List[Dict[str, Any]]:
         """
