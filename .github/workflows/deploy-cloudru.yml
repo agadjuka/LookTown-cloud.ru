@@ -33,6 +33,7 @@ jobs:
             ${{ secrets.CLOUD_RU_REGISTRY }}/looktownbot:latest
             ${{ secrets.CLOUD_RU_REGISTRY }}/looktownbot:${{ github.sha }}
           platforms: linux/amd64
+          provenance: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
