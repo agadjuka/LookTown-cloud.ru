@@ -77,10 +77,11 @@ def merge_booking_state(
     Логика обновления:
     1. Если LLM вернула None для service_id (смена темы) - жесткий сброс связанных полей
     2. Если slot_time имеет время 00:00 - не устанавливаем slot_time (это дата без времени)
-    3. Если slot_time сбрасывается явно (None) - сбрасываем и slot_time_verified
-    4. Если master_id сбрасывается явно (None) - сбрасываем и master_name
-    5. Если master_name сбрасывается явно (None) - удаляем master_name
-    6. Обычное обновление остальных полей (только не-None значения)
+    3. Если slot_time обновляется (меняется на новое значение) - сбрасываем slot_time_verified
+    4. Если slot_time сбрасывается явно (None) - сбрасываем и slot_time_verified
+    5. Если master_id сбрасывается явно (None) - сбрасываем и master_name
+    6. Если master_name сбрасывается явно (None) - удаляем master_name
+    7. Обычное обновление остальных полей (только не-None значения)
     
     Args:
         current_state: Текущее состояние бронирования
@@ -107,6 +108,14 @@ def merge_booking_state(
             logger.info(f"Обнаружено время 00:00 в slot_time={extracted_data['slot_time']}, не устанавливаем slot_time")
             # Удаляем slot_time из extracted_data, чтобы не устанавливать его
             extracted_data.pop("slot_time")
+    
+    # Если slot_time обновляется (меняется на новое значение), сбрасываем slot_time_verified
+    if "slot_time" in extracted_data and extracted_data["slot_time"] is not None:
+        current_slot_time = current_details.get("slot_time")
+        new_slot_time = extracted_data["slot_time"]
+        if current_slot_time != new_slot_time:
+            logger.info(f"Обнаружено обновление slot_time: '{current_slot_time}' -> '{new_slot_time}', сбрасываем slot_time_verified")
+            current_details["slot_time_verified"] = None
     
     # Если slot_time сбрасывается явно, сбрасываем и slot_time_verified
     if "slot_time" in extracted_data and extracted_data["slot_time"] is None:

@@ -20,6 +20,7 @@ from ....agents.tools.find_slots.logic import find_slots_by_period
 from ....agents.tools.common.yclients_service import YclientsService
 from ....agents.tools.call_manager import CallManager
 from ....agents.tools.common.book_times_logic import _get_name_variants, _normalize_name
+from langchain_core.messages import AIMessage
 
 
 def slot_manager_node(state: ConversationState) -> ConversationState:
@@ -259,12 +260,14 @@ def _verify_slot_time_availability(
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
             updated_booking_state["slot_time_verified"] = None
+            answer_text = "Извините, произошла ошибка с указанным временем. Давайте выберем другое время."
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
                     "booking": updated_booking_state
                 },
-                "answer": "Извините, произошла ошибка с указанным временем. Давайте выберем другое время."
+                "messages": [AIMessage(content=answer_text)],
+                "answer": answer_text
             }
         
         # Получаем параметры мастера
@@ -285,12 +288,14 @@ def _verify_slot_time_availability(
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
             updated_booking_state["slot_time_verified"] = None
+            answer_text = "Извините, произошла ошибка при проверке доступности времени. Попробуйте еще раз."
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
                     "booking": updated_booking_state
                 },
-                "answer": "Извините, произошла ошибка при проверке доступности времени. Попробуйте еще раз."
+                "messages": [AIMessage(content=answer_text)],
+                "answer": answer_text
             }
         
         # Вызываем find_slots_by_period для проверки конкретного времени
@@ -363,24 +368,28 @@ def _verify_slot_time_availability(
                     updated_booking_state = booking_state.copy()
                     updated_booking_state["slot_time"] = None
                     updated_booking_state["slot_time_verified"] = None
+                    answer_text = "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
                     return {
                         "extracted_info": {
                             **state.get("extracted_info", {}),
                             "booking": updated_booking_state
                         },
-                        "answer": "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
+                        "messages": [AIMessage(content=answer_text)],
+                        "answer": answer_text
                     }
             
             # Если это не техническая ошибка - обычная обработка (время недоступно)
             updated_booking_state = booking_state.copy()
             updated_booking_state["slot_time"] = None
             updated_booking_state["slot_time_verified"] = None
+            answer_text = f"К сожалению, время {time_str} на {date_str} недоступно. Давайте выберем другое время?"
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
                     "booking": updated_booking_state
                 },
-                "answer": f"К сожалению, время {time_str} на {date_str} недоступно. Давайте выберем другое время?"
+                "messages": [AIMessage(content=answer_text)],
+                "answer": answer_text
             }
         
         # Проверяем, есть ли это время в результатах
@@ -519,15 +528,22 @@ def _verify_slot_time_availability(
             except:
                 formatted_date = date_str
             
+            # Формируем сообщение для пользователя
+            answer_text = f"К сожалению, время {time_str} на {formatted_date} недоступно. Давайте выберем другое время."
+            
+            # КРИТИЧНО: Создаем AIMessage для сохранения в истории LangGraph
+            new_messages = [AIMessage(content=answer_text)]
+            
             logger.info(f"[SLOT_VERIFY]   Обновленное booking_state: {updated_booking_state}")
-            logger.info(f"[SLOT_VERIFY]   Ответ пользователю: 'К сожалению, время {time_str} на {formatted_date} недоступно...'")
+            logger.info(f"[SLOT_VERIFY]   Ответ пользователю: '{answer_text}'")
             logger.info(f"[SLOT_VERIFY] ===== КОНЕЦ ПРОВЕРКИ (НЕДОСТУПНО) =====")
             return {
                 "extracted_info": {
                     **state.get("extracted_info", {}),
                     "booking": updated_booking_state
                 },
-                "answer": f"К сожалению, время {time_str} на {formatted_date} недоступно. Давайте выберем другое время."
+                "messages": new_messages,  # КРИТИЧНО: Возвращаем сообщение для сохранения в истории
+                "answer": answer_text
             }
             
     except Exception as e:
@@ -579,12 +595,14 @@ def _verify_slot_time_availability(
                 updated_booking_state = booking_state.copy()
                 updated_booking_state["slot_time"] = None
                 updated_booking_state["slot_time_verified"] = None
+                answer_text = "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
                 return {
                     "extracted_info": {
                         **state.get("extracted_info", {}),
                         "booking": updated_booking_state
                     },
-                    "answer": "Извините, произошла техническая ошибка. Наш менеджер свяжется с вами в ближайшее время."
+                    "messages": [AIMessage(content=answer_text)],
+                    "answer": answer_text
                 }
         
         # При обычной ошибке сбрасываем время
@@ -593,12 +611,14 @@ def _verify_slot_time_availability(
         updated_booking_state["slot_time"] = None
         updated_booking_state["slot_time_verified"] = None
         logger.info(f"[SLOT_VERIFY] ===== КОНЕЦ ПРОВЕРКИ (ОШИБКА) =====")
+        answer_text = "Извините, произошла ошибка при проверке доступности времени. Давайте выберем другое время?"
         return {
             "extracted_info": {
                 **state.get("extracted_info", {}),
                 "booking": updated_booking_state
             },
-            "answer": "Извините, произошла ошибка при проверке доступности времени. Давайте выберем другое время?"
+            "messages": [AIMessage(content=answer_text)],
+            "answer": answer_text
         }
 
 
