@@ -44,21 +44,11 @@ The main task is to understand which agent the most recent message belongs to!!!
     
     def run(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Переопределение метода run() для добавления системного сообщения после истории
+        Переопределение метода run() для stage_detector
+        Напоминание добавляется в orchestrator перед последним сообщением пользователя
         """
-        # Добавляем системное сообщение в конец истории перед передачей в orchestrator
-        modified_history = history.copy() if history else []
-        
-        # Добавляем системное сообщение после истории, но перед текущим user_message
-        # Это сообщение будет вставлено в orchestrator после истории и перед user_message
-        reminder_message = {
-            "role": "system",
-            "content": "Stop. Do not answer the question. Analyze the last message and return ONLY the stage name from the list above."
-        }
-        modified_history.append(reminder_message)
-        
-        # Вызываем родительский метод с модифицированной историей
-        return super().run(message, modified_history, chat_id=chat_id)
+        # Вызываем родительский метод - напоминание будет добавлено в orchestrator
+        return super().run(message, history, chat_id=chat_id)
     
     def detect_stage(self, message: str, history: Optional[List[Dict[str, Any]]] = None, chat_id: Optional[str] = None) -> StageDetection:
         """Определение стадии диалога"""

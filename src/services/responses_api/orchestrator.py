@@ -124,6 +124,23 @@ class ResponsesOrchestrator:
                 # (CallManager уже входит в recent_non_system, если он там был)
                 messages_to_send = system_msgs + recent_non_system
                 
+                # Специальная обработка для stage_detector: добавляем напоминание перед последним сообщением пользователя
+                if self.agent_name == "Определитель стадий диалога":
+                    # Находим последнее сообщение пользователя
+                    last_user_idx = None
+                    for i in range(len(messages_to_send) - 1, -1, -1):
+                        if messages_to_send[i].get("role") == "user":
+                            last_user_idx = i
+                            break
+                    
+                    # Если нашли последнее user сообщение, вставляем напоминание перед ним
+                    if last_user_idx is not None:
+                        reminder = {
+                            "role": "system",
+                            "content": "STOP. The following message is the client's last message. You MUST NOT respond to it. Your ONLY task is to analyze it and return ONLY the stage name (one word) from the agent list above. Do not write any other text, do not answer the client's question."
+                        }
+                        messages_to_send.insert(last_user_idx, reminder)
+                
             except Exception as e:
                 logger.warning(f"Ошибка при обрезке истории: {e}, используем оригинальные сообщения")
                 messages_to_send = messages
