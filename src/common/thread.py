@@ -79,3 +79,4 @@ class Thread:
         return self._messages[-count:] if len(self._messages) > count else self._messages
 
 
+

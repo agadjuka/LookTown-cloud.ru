@@ -109,3 +109,4 @@ def load_json_from_cloud_ru(bucket_name: str, file_path: str) -> Dict:
         raise Exception(error_details) from e
 
 
+

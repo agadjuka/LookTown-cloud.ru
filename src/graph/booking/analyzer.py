@@ -58,7 +58,7 @@ EXTRACTION RULES (Return JSON):
 1. Service ID: Extract `service_id` (8 digits) from tools (role="tool"). ONLY when the client chose it for booking. NEVER make up IDs. Do not extract if the client is interested in service details, masters who perform it, etc. until they confirm this service.
 2. Service Name: If the client writes a service name (as text, or "хочу стрижку"), return `service_name`.
 3. TOPIC CHANGE (IMPORTANT): If the client changes their desire (e.g., wanted a manicure, now writes about a pedicure) — return the new `service_name` and set `service_id`, `master_id`, `slot_time` to null.
-4. Slot: Date/time in format "YYYY-MM-DD HH:MM" (fill only if the client named an exact time)
+4. Slot: Date/time in format "YYYY-MM-DD HH:MM". Fill the specific time ONLY if the client explicitly wrote it OR if there is strictly only one available slot shown in the context. If multiple slots exist and the client didn't specify one, return "YYYY-MM-DD 00:00". 
 5. Contacts: `client_name` and `client_phone` (digits/+ only).
 6. Master: `master_id` (from tool) or `master_name`. (мастер/топ-мастер/юниор are not relevant). Fill only if the client wants a specific master.   
 
