@@ -87,10 +87,28 @@ async def set_bot_commands(bot) -> None:
                 BotCommand("manager", "👨‍💻 Включить ручной режим"),
                 BotCommand("bot", "🤖 Включить авто-режим ИИ"),
             ]
-            await bot.set_my_commands(
-                commands=admin_commands,
-                scope=BotCommandScopeChat(chat_id=admin_group_id),
-            )
+            try:
+                await bot.set_my_commands(
+                    commands=admin_commands,
+                    scope=BotCommandScopeChat(chat_id=admin_group_id),
+                )
+                logger.debug(f"Команды админ-панели установлены для группы {admin_group_id}")
+            except Exception as admin_cmd_error:
+                # Ошибка при установке команд для админ-группы - не критично
+                # Может быть, если бот не добавлен в группу или не имеет прав
+                error_msg = str(admin_cmd_error)
+                if "Chat not found" in error_msg or "chat not found" in error_msg.lower():
+                    logger.warning(
+                        f"⚠️ Не удалось установить команды для админ-группы {admin_group_id}: "
+                        f"чат не найден. Убедитесь, что:\n"
+                        f"  1. Бот добавлен в группу с ID {admin_group_id}\n"
+                        f"  2. Бот является администратором группы\n"
+                        f"  3. ID группы указан правильно"
+                    )
+                else:
+                    logger.warning(
+                        f"⚠️ Не удалось установить команды для админ-группы {admin_group_id}: {error_msg}"
+                    )
     except Exception as e:
         logger.error("Ошибка при установке команд бота: %s", str(e), exc_info=True)
 
