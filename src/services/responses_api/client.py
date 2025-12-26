@@ -115,9 +115,22 @@ class ResponsesAPIClient:
             try:
                 # Если это уже словарь
                 if isinstance(tc, dict):
-                    # Проверяем обязательные поля
+                    # Поддержка формата LangGraph (name, args, id)
+                    if "name" in tc and "args" in tc:
+                        import json
+                        normalized_tc = {
+                            "id": str(tc.get("id", "")),
+                            "type": "function",
+                            "function": {
+                                "name": str(tc.get("name", "")),
+                                "arguments": json.dumps(tc.get("args", {}), ensure_ascii=False)
+                            }
+                        }
+                        normalized_calls.append(normalized_tc)
+                        continue
+                    
+                    # Проверяем обязательные поля для формата OpenAI
                     if "id" not in tc or "function" not in tc:
-                        logger.warning(f"tool_call без обязательных полей: {tc}, пропускаем")
                         continue
                     
                     # Нормализуем структуру
