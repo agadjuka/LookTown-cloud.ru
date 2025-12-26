@@ -78,10 +78,11 @@ def merge_booking_state(
     1. Если LLM вернула None для service_id (смена темы) - жесткий сброс связанных полей
     2. Если slot_time имеет время 00:00 - не устанавливаем slot_time (это дата без времени)
     3. Если slot_time обновляется (меняется на новое значение) - сбрасываем slot_time_verified
-    4. Если slot_time сбрасывается явно (None) - сбрасываем и slot_time_verified
-    5. Если master_id сбрасывается явно (None) - сбрасываем и master_name
-    6. Если master_name сбрасывается явно (None) - удаляем master_name
-    7. Обычное обновление остальных полей (только не-None значения)
+    4. УНИВЕРСАЛЬНЫЙ СБРОС: Если любое поле приходит как None - оно сбрасывается:
+       - slot_time: None -> сбрасывает slot_time и slot_time_verified
+       - master_id: None -> сбрасывает master_id и master_name
+       - Любое другое поле: None -> сбрасывает это поле
+    5. Обычное обновление остальных полей (только не-None значения)
     
     Args:
         current_state: Текущее состояние бронирования
@@ -117,20 +118,29 @@ def merge_booking_state(
             logger.info(f"Обнаружено обновление slot_time: '{current_slot_time}' -> '{new_slot_time}', сбрасываем slot_time_verified")
             current_details["slot_time_verified"] = None
     
-    # Если slot_time сбрасывается явно, сбрасываем и slot_time_verified
-    if "slot_time" in extracted_data and extracted_data["slot_time"] is None:
-        current_details["slot_time_verified"] = None
+    # Универсальная обработка сброса полей: если поле приходит как None, оно сбрасывается
+    # Сначала обрабатываем все None значения для сброса полей
+    for key, value in extracted_data.items():
+        if value is None:
+            # Универсальный сброс: если поле приходит как None, сбрасываем его
+            if key == "slot_time":
+                # При сбросе slot_time также сбрасываем slot_time_verified
+                current_details["slot_time"] = None
+                current_details["slot_time_verified"] = None
+            elif key == "master_id":
+                # При сбросе master_id также удаляем master_name
+                current_details["master_id"] = None
+                current_details.pop("master_name", None)
+            elif key == "service_id":
+                # service_id уже обработан выше (жесткий сброс), но на всякий случай
+                # не делаем ничего, чтобы не перезаписать логику выше
+                pass
+            else:
+                # Для всех остальных полей (master_name, service_name, client_name, client_phone и любых других)
+                # универсально сбрасываем, если приходит None
+                current_details.pop(key, None)
     
-    # Если master_id сбрасывается явно, сбрасываем и master_name
-    if "master_id" in extracted_data and extracted_data["master_id"] is None:
-        current_details["master_id"] = None
-        current_details.pop("master_name", None)  # Удаляем, если есть
-    
-    # Если master_name сбрасывается явно (независимо от master_id)
-    if "master_name" in extracted_data and extracted_data["master_name"] is None:
-        current_details.pop("master_name", None)  # Удаляем, если есть
-    
-    # 2. Обычное обновление остальных полей
+    # Обычное обновление остальных полей (только не-None значения)
     for key, value in extracted_data.items():
         # Если значение пришло (даже если это новое имя услуги) - обновляем
         if value is not None:
