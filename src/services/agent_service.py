@@ -161,10 +161,19 @@ class AgentService:
                 # Если только одно сообщение от пользователя (текущее), значит это первое сообщение
                 is_first_message = user_messages_count == 1
                 
+                # Получаем текущую дату и время в московском часовом поясе для проверки первого сообщения в день
+                current_datetime = None
+                try:
+                    moscow_tz = pytz.timezone('Europe/Moscow')
+                    current_datetime = datetime.now(moscow_tz)
+                except Exception:
+                    # Если не удалось получить время, передаем None (проверка первого сообщения в день не будет работать)
+                    pass
+                
                 # Форматируем ответ агента
                 from .text_formatter_service import format_agent_response, format_manager_alert
                 
-                answer = format_agent_response(answer, is_first_message)
+                answer = format_agent_response(answer, is_first_message, messages, current_datetime)
                 
                 result = {"user_message": answer, "is_first_message": is_first_message}
                 if manager_alert:
