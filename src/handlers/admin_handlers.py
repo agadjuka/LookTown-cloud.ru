@@ -22,17 +22,20 @@ def _get_admin_service(bot):
             logger.debug("Админ-панель не настроена (TELEGRAM_ADMIN_GROUP_ID не установлен)")
             return None
 
-        try:
-            storage = get_topic_storage()
-            _admin_service = AdminPanelService(
-                bot=bot,
-                storage=storage,
-                admin_group_id=admin_group_id,
+        storage = get_topic_storage()
+        if storage is None:
+            raise RuntimeError(
+                "Админ-панель настроена (TELEGRAM_ADMIN_GROUP_ID установлен), "
+                "но хранилище топиков (TopicStorage) не инициализировано. "
+                "Необходимо настроить базу данных для админ-панели."
             )
-            logger.debug("Инициализирован AdminPanelService")
-        except Exception as e:
-            logger.warning("Не удалось инициализировать AdminPanelService: %s", str(e))
-            return None
+        
+        _admin_service = AdminPanelService(
+            bot=bot,
+            storage=storage,
+            admin_group_id=admin_group_id,
+        )
+        logger.debug("Инициализирован AdminPanelService")
 
     return _admin_service
 

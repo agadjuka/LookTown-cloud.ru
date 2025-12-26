@@ -135,6 +135,16 @@ async def startup_event():
             logger.warning("Ошибка при установке команд бота: %s", str(e))
         
         logger.success("✅ Приложение Telegram запущено")
+    except RuntimeError as e:
+        # Пробрасываем RuntimeError (ошибки инициализации админ-панели) дальше
+        error_msg = f"❌ КРИТИЧЕСКАЯ ОШИБКА при запуске приложения Telegram: {e}"
+        print(error_msg, flush=True)
+        import traceback
+        tb = traceback.format_exc()
+        print(f"Трассировка:\n{tb}", flush=True)
+        logger.error(error_msg)
+        logger.error(f"Трассировка:\n{tb}")
+        raise  # Пробрасываем ошибку, чтобы приложение не запустилось
     except Exception as e:
         error_msg = f"❌ Ошибка при запуске приложения Telegram: {e}"
         print(error_msg, flush=True)
@@ -143,7 +153,7 @@ async def startup_event():
         print(f"Трассировка:\n{tb}", flush=True)
         logger.error(error_msg)
         logger.error(f"Трассировка:\n{tb}")
-        # НЕ делаем raise - пусть приложение запустится даже с ошибкой
+        # Для других ошибок не делаем raise - пусть приложение запустится
         # raise
     
     # Настраиваем webhook

@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
 from src.services.logger_service import logger
 from src.config.admin_config import get_telegram_admin_group_id
-from src.handlers.telegram_handlers import start, new_chat, handle_message
+from src.handlers.telegram_handlers import start, new_chat, handle_message, get_admin_service
 from src.handlers.admin_handlers import handle_admin_message, handle_manager_command, handle_bot_command
 
 # Глобальная переменная для приложения Telegram
@@ -30,6 +30,25 @@ def setup_application(telegram_token: str) -> Application:
     # Обработчики для админ-панели
     admin_group_id = get_telegram_admin_group_id()
     if admin_group_id is not None:
+        logger.info(f"🔍 Обнаружена переменная TELEGRAM_ADMIN_GROUP_ID={admin_group_id}, проверяем конфигурацию админ-панели...")
+        # Проверяем, что админ-панель может быть инициализирована при старте
+        # Это нужно, чтобы локальная версия падала так же, как облачная
+        try:
+            # Пытаемся инициализировать админ-сервис при старте
+            get_admin_service(application.bot)
+            logger.info("✅ Админ-панель инициализирована при старте")
+        except RuntimeError as e:
+            # RuntimeError - это наша ошибка о неправильной конфигурации
+            logger.error("❌ КРИТИЧЕСКАЯ ОШИБКА инициализации админ-панели при старте: %s", str(e))
+            raise  # Пробрасываем дальше
+        except Exception as e:
+            logger.error("❌ Ошибка инициализации админ-панели при старте: %s", str(e))
+            raise RuntimeError(
+                f"Не удалось инициализировать админ-панель при старте: {str(e)}"
+            ) from e
+    else:
+        logger.debug("Админ-панель не настроена (TELEGRAM_ADMIN_GROUP_ID не установлен)")
+        
         admin_chat_filter = filters.Chat(chat_id=admin_group_id)
         application.add_handler(
             CommandHandler("manager", handle_manager_command, filters=admin_chat_filter)

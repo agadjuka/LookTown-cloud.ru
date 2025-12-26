@@ -14,12 +14,12 @@ def get_telegram_admin_group_id() -> int | None:
         ID группы или None, если не установлен
     """
     group_id_str = os.getenv("TELEGRAM_ADMIN_GROUP_ID")
-    if not group_id_str:
-        logger.warning("TELEGRAM_ADMIN_GROUP_ID не установлен")
+    if not group_id_str or not group_id_str.strip():
+        logger.warning("TELEGRAM_ADMIN_GROUP_ID не установлен или пустой")
         return None
     
     try:
-        return int(group_id_str)
+        return int(group_id_str.strip())
     except ValueError:
         logger.error(
             "TELEGRAM_ADMIN_GROUP_ID должен быть числом, получено: %s",
