@@ -30,7 +30,7 @@ class FindSlots(BaseModel):
     
     time_period: Optional[str] = Field(
         default=None,
-        description="Time period (optional field). Supported formats: 'morning' (9:00-11:00), 'day' (11:00-17:00), 'evening' (17:00-22:00); specific time '16:00' interval '16:00-19:00' 'before 11:00'; 'after 16:00' (after 16:00)."
+        description='Time period (optional field). Supported formats: \'morning\' (9:00-11:00), \'day\' (11:00-17:00), \'evening\' (17:00-22:00); specific time \'16:00\' interval \'16:00-19:00\' \'before 11:00\'; \'after 16:00\' (after 16:00). ((for find slots today dont put "after current time", just use today date))'
     )
     
     master_name: Optional[str] = Field(

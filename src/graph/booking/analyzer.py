@@ -60,7 +60,7 @@ EXTRACTION RULES (Return JSON):
 3. TOPIC CHANGE (IMPORTANT): If the client changes their desire (e.g., wanted a manicure, now writes about a pedicure) — return the new `service_name` and set `service_id`, `master_id`, `slot_time` to null.
 4. Slot: Date/time in format "YYYY-MM-DD HH:MM". Fill specific time ONLY if client wrote it OR strictly one slot exists. If tool shows separators like | (e.g. 12:00 | 13:00), it counts as MULTIPLE slots. IF client say only date return "YYYY-MM-DD 00:00" (except in date inly one slot). If Date/time already filled, but client again ask about time - reset null.
 5. Contacts: `client_name` and `client_phone` (digits/+ only).
-6. Master: `master_id` (from tool) or `master_name`. (мастер/топ-мастер/юниор are not relevant). Fill only if the client wants a specific master.   
+6. Master: `master_id` (from tool) or `master_name`. (NEVER PUT мастер/топ-мастер/юниор. Its not name). Fill only if the client wants a specific master.   
 
 Exception: If the client wants to learn details about a service (asks for details of any service), master (interested in the master who performs this service), masters who perform the service then: Add the field `"service_details_needed": true` to JSON (do not do this when the client wants to book). If user already got info about services/masters, and want book - dont add it.
 
